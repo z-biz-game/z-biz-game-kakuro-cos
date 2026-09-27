@@ -17,6 +17,11 @@ export const UNIQUE = 1; // 恰好一个解
 export const MANY = 2; // 至少两个解（limit 到了就停）
 export const OVERBUDGET = -1; // 节点数用完还没数完：结论未知，不许当成"唯一"
 
+// 数解的节点预算。这个数是**下限意义上的诚实**：预算用完 = 唯一解没证完 = 这一局不出货，
+// 所以想要更多题只有一个正当办法——把预算调大（或把该档的盘缩小），没有第二个选项。
+// 它被 balance/bake 打进输出里（`超预算` 一栏必须为 0），不是内部细节。
+export const DEFAULT_MAX_NODES = 4_000_000;
+
 const MAX_DIGIT = 9;
 const ACROSS = 0;
 const DOWN = 1;
@@ -91,15 +96,18 @@ function maxRest(left, used) {
 
 /**
  * 数解。`limit` 是数到几个就收手（默认 2：判唯一只需要知道"不超过一个"）。
+ * `maxNodes` 用完还没数完 ⇒ status=OVERBUDGET，**这不是"唯一"**，调用方必须把这一局拒收。
  * 返回 { status, count, values, nodes }：values 是**按网格下标**排的 Uint8Array（黑格为 0），
  * 第一个解；换算成引擎的密集下标请用下面的 toDense()，两边比对时也这么做。
  */
-export function countSolutions(board, { limit = 2, maxNodes = 4_000_000 } = {}) {
+export function countSolutions(board, { limit = 2, maxNodes = DEFAULT_MAX_NODES, ignore = null } = {}) {
   const { w, h, black } = board;
   const n = w * h;
   const runs = buildRuns(board);
   const whites = [];
   for (let t = 0; t < n; t++) if (!black[t]) whites.push(t);
+  // ignore = 这一批 run 下标的"和"被擦掉了（只受规则 2 的互不重复约束）。用来量"这条线索能不能省"。
+  const wild = ignore && ignore.length ? new Set(ignore) : null;
 
   // 每格属于哪两条 run（自己的表）
   const cellRuns = Array.from({ length: n }, () => []);
@@ -137,6 +145,7 @@ export function countSolutions(board, { limit = 2, maxNodes = 4_000_000 } = {}) 
           ok = false;
           break;
         }
+        if (wild && wild.has(run.id)) continue; // 和已知？不知道，只剩"不许重复"
         const left = run.len - posIn[t].get(run) - 1; // 这一格之后还有几格没定
         const s = sums[run.id] + d;
         if (s > run.clue) {
@@ -177,7 +186,7 @@ export function countSolutions(board, { limit = 2, maxNodes = 4_000_000 } = {}) 
   dfs(0);
 
   const status = budgetOut && count < 2 ? OVERBUDGET : count === 0 ? NONE : count === 1 ? UNIQUE : MANY;
-  return { status, count, values: first, nodes, runs: runs.length, whites: whites.length };
+  return { status, count, values: first, nodes, budget: maxNodes, runs: runs.length, whites: whites.length };
 }
 
 /** 把按网格下标的解换算成引擎的密集下标（长度 board.n）。比对两个实现时用这个。 */

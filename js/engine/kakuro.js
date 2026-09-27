@@ -56,8 +56,11 @@ export function runOfClueHome(board, home, dir) {
   return board.runs.find((r) => r.home === home && r.dir === dir) || null;
 }
 
-// 线索/结构的紧凑编码：一格一字符，46 字符表 0-9A-Z 直接表示 0..45（和的最大值就是 45）。
-const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+// 线索/结构的紧凑编码：一格一字符。字符表 62 个（0-9A-Za-z），要表示的最大值是 45
+// —— 9+8+…+1，也就是 9 格 run 的和上限 —— 36 个字符不够用，所以把小写字母也请进来。
+// 黑格表只用得上前两个字符。
+export const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+export const MAX_ENCODED = CHARS.length - 1; // 61
 const CHAR_AT = Object.create(null);
 for (let i = 0; i < CHARS.length; i++) CHAR_AT[CHARS[i]] = i;
 
