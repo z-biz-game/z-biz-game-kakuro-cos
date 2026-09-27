@@ -8,6 +8,12 @@
 //      不然刷新就变成免费重开。reset() 同时清内存与磁盘。
 //
 // 墨水用 RLE（大盘连续同值多），笔记用"每格 2 字节小端 + RLE"，两者都过同一个编解码器。
+//
+// 档位一律夹到引擎自己说的上限（`MAX_TIER`）：夹成写死的 8 会把 `TIERS[8] === undefined`
+// 放进启动路径（`js/main.js` 的 `puzzleFrom` 要拿 `TIERS[tier].name` 画状态行），
+// 一份手改过的存档就能白屏。
+
+import { MAX_TIER } from './engine/generate.js';
 
 export const KEY = 'kakuro.save.v1';
 export const VERSION = 1;
@@ -103,7 +109,7 @@ export function sanitizeResume(raw) {
     status: raw.status === 'won' ? 'won' : 'playing',
     kind: str(raw.kind) || 'random',
     day: str(raw.day, 12),
-    tier: clampInt(raw.tier, 0, 8, 0),
+    tier: clampInt(raw.tier, 0, MAX_TIER, 0),
     chapter: clampInt(raw.chapter, -1, 40, -1),
     index: clampInt(raw.index, -1, 400, -1),
   };
@@ -152,7 +158,7 @@ export function sanitizeRuns(raw) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !v || typeof v !== 'object') continue;
     out[day] = {
       done: !!v.done,
-      tier: clampInt(v.tier, 0, 8, 0),
+      tier: clampInt(v.tier, 0, MAX_TIER, 0),
       moves: clampInt(v.moves, 0, 1e6, 0),
       hints: clampInt(v.hints, 0, 1e5, 0),
       ms: clampInt(v.ms, 0, 1e10, 0),
@@ -184,7 +190,7 @@ export function sanitize(raw) {
   const o = raw.options && typeof raw.options === 'object' ? raw.options : {};
   s.options = {
     muted: !!o.muted,
-    tier: clampInt(o.tier, 0, 8, 2),
+    tier: clampInt(o.tier, 0, MAX_TIER, 2),
     hideNotes: !!o.hideNotes,
   };
   return s;
@@ -267,7 +273,7 @@ export function createStore(backend = storage()) {
     recordDaily(day, entry) {
       state.daily[day] = {
         done: true,
-        tier: clampInt(entry.tier, 0, 8, 0),
+        tier: clampInt(entry.tier, 0, MAX_TIER, 0),
         moves: clampInt(entry.moves, 0, 1e6, 0),
         hints: clampInt(entry.hints, 0, 1e5, 0),
         ms: clampInt(entry.ms, 0, 1e10, 0),

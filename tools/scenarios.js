@@ -621,7 +621,12 @@
     eq('chapters 只留合法项', JSON.stringify(s.chapters), JSON.stringify({ 0: ['ok'] }));
     eq('daily 只留合法日型', JSON.stringify(Object.keys(s.daily)), JSON.stringify(['2026-09-27']));
     eq('daily 越界 tier 夹到 0', s.daily['2026-09-27'].tier, 0);
-    eq('options.tier 越界夹到上限 8', s.options.tier, 8);
+    // 档位夹的是引擎的真实上限，不是写死的 8：夹成 8 会让启动路径去读 TIERS[8]（不存在）而白屏。
+    eq('options.tier 越界夹到引擎档数上限', s.options.tier, E().TIERS.length - 1);
+    eq('夹完的档位查得到实体（TIERS[tier] 不是 undefined）', !!E().TIERS[s.options.tier], true);
+    A().beginRandom();
+    ck('用被夹过的档位开随机题不炸（有局、状态行没报抽不到盘）',
+      !!A().game && !/现场没抽到/.test(text('#state-line')), text('#state-line'));
     eq('布尔字段用 !! 清洗', `${s.options.muted}/${s.options.hideNotes}`, 'true/true');
     eq('版本号以代码为准', s.version, 1);
     // 还能正常开局玩
