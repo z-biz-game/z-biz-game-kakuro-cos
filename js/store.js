@@ -202,6 +202,21 @@ function storage() {
   }
 }
 
+/** 盘上只允许一种形状：墨水以 ink 字符串存放（内存里的展开态不算）。
+ *  开机 load 之后 state.resume 是 sanitizeResume 展开的 values/notes 数组，原样 stringify
+ *  会写成 "values":{"0":1,…} 这种没有 ink 字段的对象，下次启动 sanitizeResume 读不到
+ *  棋盘，整盘被当成空——刷新两次 = 丢档。所以回写前必须重编码成 ink 形状。 */
+function toDiskShape(resume) {
+  if (!resume || typeof resume.ink === 'string') return resume;
+  if (!resume.values || typeof resume.values.length !== 'number') return resume;
+  const { values, notes, ...rest } = resume;
+  return {
+    ...rest,
+    ink: rleEncode(values),
+    notes: typeof notes === 'string' ? notes : encodeNotes(notes || []),
+  };
+}
+
 export function createStore(backend = storage()) {
   let state = sanitize(null);
   const api = {
@@ -223,7 +238,7 @@ export function createStore(backend = storage()) {
     save() {
       if (!backend) return false;
       try {
-        backend.setItem(KEY, JSON.stringify(state));
+        backend.setItem(KEY, JSON.stringify({ ...state, resume: toDiskShape(state.resume) }));
         return true;
       } catch {
         return false; // 配额满/被禁用：内存里继续玩，不炸
