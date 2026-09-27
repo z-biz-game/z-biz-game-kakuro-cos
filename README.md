@@ -167,7 +167,7 @@ npm test             # 引擎断言 144 通过 / 0 失败，分节 A–H（每�
 npm run bake         # 构建期烘 25 局进 js/data/levels.js（连答案 ink 与每一局的读数）
 npm run bake -- --check   # 复验：✓ 25 局复验一致；五档各「超预算 0 局」，穷举节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance # 难度尺：对账 405 格 0 处不一致、五档中位数递增、各档超预算 0/N，不成立就 exit 1
-npm run verify       # 真实 headless Chrome：14 个场景 / 224 条断言 / 0 失败（HTTP 5316、CDP 9366）
+npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0 失败（HTTP 5316、CDP 9366）
 ```
 
 - `npm test` 的八节：A 组合数学（405 个合式 `(L,S)` 的 DP 表与穷举逐格相等）｜B 哨兵值｜
@@ -177,6 +177,12 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 224 条断言 / 0
   dirty-a dirty-b dirty-c touch geom`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
   墨色数字像素、触摸目标 ≥44px、5×5 与 10×10 的几何对拍），不读内部标志位。
   `verify.sh` 有 pre-flight：先 `curl` 首页、`grep 加算十字`，证明 5316 上服务的是本作。
+- 这套闸在**两种 URL 形态**下各跑过一遍，都是 14 场景 230 条 0 失败（2026-09-27 实测）：
+  `npm run verify`（`http://127.0.0.1:5316/`，根形态）与
+  `BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify`
+  ——后者就是生产的 `/z-biz-game-kakuro-cos/` 前缀形态（真 CDN 上跑）。页面里全是相对引用，
+  所以前缀形态不需要改代码，但**需要跑过**：只在根形态下绿过的闸，证不到上线后的那个地址。
+  本地没有起带前缀的服务（`server.cjs` 不挂前缀路径），所以这一形态目前只能靠已部署站点复验。
 - **可选诊断**：`REDUNDANT=1 npm run bake -- --check` 或 `REDUNDANT=1 npm run balance` 会逐局打
   "可省线索 X/Y 条"。它**只打数、不 fail**，理由写在 `tools/balance.mjs:232-236`：
   可省不是违规（"线索最小"从来不是承诺），真正会 fail 的只有 `unproven`——那是"这次测量没做完"，

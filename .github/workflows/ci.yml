@@ -47,8 +47,11 @@ jobs:
           SAMPLES: "24"
 
       # Unit assertions for the engine itself (combination-table reconciliation, rule
-      # soundness, counter agreement, over-budget rejection, save-file sanitising).
-      # 144 assertions; every promise this repo makes has a section that would go red.
+      # soundness, counter agreement, over-budget rejection, pencil-completable library,
+      # measured redundant clues). 144 assertions; every promise this step names has a
+      # section that would go red. Hand-edged save files are NOT checked here — they need
+      # a real localStorage, so that promise is held by tools/verify.sh's dirty-a/b/c
+      # scenarios, which CI does not run.
       - name: Engine tests
         run: node tools/engine-test.mjs
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # One-shot browser verification: real headless Chrome, real DOM, real localStorage.
 #
-#   ./tools/verify.sh                       # all 12 scenarios
+#   ./tools/verify.sh                       # all 14 scenarios
 #   SCENARIOS="first play" ./tools/verify.sh
+#   BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ ./tools/verify.sh
+#       ^ the Pages shape: same app under a /<repo>/ prefix, served by the real CDN.
+#         2026-09-27 run of that form: 14 场景 230 checks, 0 failed.
 #
 # Do NOT add --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader: software
 # rasterisation saturates every core and, with no CDP client attached, Chrome will not exit
