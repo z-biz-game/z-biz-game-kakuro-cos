@@ -524,10 +524,10 @@
     if (!snap) return report({});
     ck('刷新后直接是章节页（不擅自开局）', shown('#view-menu') && !shown('#view-game'));
     ck('继续卡出现', shown('#resume-card'));
-    ck('继续卡写了档位与尺寸', /入门（5×5）/.test(text('#resume-name')), text('#resume-name'));
+    ck('继续卡写了档位与尺寸', /入门.*（5×5）/.test(text('#resume-name')), text('#resume-name'));
     ck('继续卡写了花费', new RegExp(`${snap.moves} 步 · 提示 ${snap.hints} 次 · 没打完`).test(text('#resume-meta')), text('#resume-meta'));
     const raw = JSON.parse(localStorage.getItem(KEY));
-    eq('刷新后磁盘上的 ink 未变形', Array.from(E().rleDecode(raw.resume.ink, 9)).join(','), snap.values.join(','));
+    eq('刷新回读后磁盘仍是 ink 形式（启动不得把棋盘写丢）', Array.from(E().rleDecode(raw.resume.ink, 9)).join(','), snap.values.join(','));
 
     await click('#btn-resume');
     await A().settled();
@@ -554,7 +554,39 @@
     await key(String(sol[t]));
     eq('续档后还能落子', game.values[t], sol[t]);
     eq('落子又写回磁盘', E().rleDecode(JSON.parse(localStorage.getItem(KEY)).resume.ink, 9)[t], sol[t]);
+    // 把续玩后的局面留给 resume-c/resume-d：那两个场景专门测「开机读档→回写磁盘」
+    // 这一步会不会把棋盘写丢（双刷新丢档 bug）。
+    w.sessionStorage.setItem(`${SNAP}-final`, JSON.stringify({
+      values: Array.from(game.values),
+      moves: game.moves,
+      hints: game.hints,
+    }));
     return report({ restoredFilled: game.filled, ms: snap.ms, cells: b.n });
+  };
+
+  // resume-c/d：两次「只刷新、不动手」之后棋盘必须还在。修复前的 bug：开机 load 把
+  // 展开态的 values 数组 JSON.stringify 成 {0:1,1:8,…} 回写磁盘（没有 ink 字段），
+  // 下一次开机的 sanitizeResume 找不到 ink，把整盘读成空——刷新两次 = 免费重开。
+  const resumeC = async () => {
+    const fin = JSON.parse(w.sessionStorage.getItem(`${SNAP}-final`) || 'null');
+    ck('拿到续玩后的快照', !!fin, 'sessionStorage 快照丢失');
+    if (!fin) return report({});
+    const r = A().store.state.resume;
+    ck('第一次续启动：内存里棋盘与快照逐格一致', !!r && Array.from(r.values).join(',') === fin.values.join(','), r ? Array.from(r.values).join(',') : 'no resume');
+    eq('第一次续启动：步数没被清', r && r.moves, fin.moves);
+    return report({ stage: 'c' });
+  };
+
+  const resumeD = async () => {
+    const fin = JSON.parse(w.sessionStorage.getItem(`${SNAP}-final`) || 'null');
+    ck('拿到续玩后的快照', !!fin, 'sessionStorage 快照丢失');
+    if (!fin) return report({});
+    const raw = JSON.parse(localStorage.getItem(KEY));
+    ck('上一轮开机回写的磁盘仍是 ink 形式', raw && raw.resume && typeof raw.resume.ink === 'string', JSON.stringify(raw && raw.resume && Object.keys(raw.resume)));
+    ck('上一轮回写的 ink 仍是那盘棋', raw && raw.resume ? Array.from(E().rleDecode(raw.resume.ink, fin.values.length)).join(',') === fin.values.join(',') : false, raw && raw.resume ? String(raw.resume.ink) : 'no resume');
+    const r = A().store.state.resume;
+    ck('双刷新后棋盘还在（不是免费重开）', !!r && Array.from(r.values).join(',') === fin.values.join(','), r ? Array.from(r.values).join(',') : 'no resume');
+    return report({ stage: 'd' });
   };
 
   // ---- 场景 7a/7b/7c：脏存档吞得下、不白屏、能重置 -----------------------------------------------------
@@ -598,8 +630,11 @@
     await key(String(solOf('c0p0')[0]));
     eq('脏档之后仍能落子', game.values[0], solOf('c0p0')[0]);
     const garbage2 = JSON.parse(w.sessionStorage.getItem(SNAP));
+    // 离开这一页时 pagehide 会 flushResume，把刚塞好的脏档原样覆盖掉。status 摆成
+    // won 让 flushResume 闭嘴——这本身就是被测代码的既定行为，不算作弊。
+    game.status = 'won';
     localStorage.setItem(KEY, JSON.stringify(garbage2));
-    eq('第二段弹药已上膛', garbage2.resume.ink.length > 0, garbage2.resume.ink);
+    ck('第二段弹药已上膛', garbage2.resume.ink.length > 0 && garbage2.resume.values === undefined, garbage2.resume.ink);
     return report({ stage: 'garbage2-written', sanitizedTier: s.options.tier });
   };
 
@@ -613,6 +648,8 @@
     eq('负数/超界计数各归各位', `${s.resume.moves}/${s.resume.hints}/${s.resume.ms}`, '1000000/0/0');
     eq('status 只认 won/playing', s.resume.status, 'playing');
     eq('乱码 notes 被 decodeNotes 吞成 0', Array.from(s.resume.notes).join(','), new Array(9).fill(0).join(','));
+    // 续档后 store.state.resume 会被 flushResume 换成 ink 形状，先把展开态留在手里
+    const clampedVals = Array.from(s.resume.values).slice(0, 4);
     await click('#btn-resume');
     await A().settled();
     const game = A().game;
@@ -627,7 +664,7 @@
     eq('清完只剩这一个键', Object.keys(localStorage).join(','), KEY);
     const g2 = A().start(A().puzzleById('c0p1'));
     eq('重置后仍能开局', g2.puzzle.id, 'c0p1');
-    return report({ clamped: Array.from(s.resume.values).slice(0, 4), conflicts: game.state().conflicts });
+    return report({ clamped: clampedVals, conflicts: game.state().conflicts });
   };
 
   // ---- 场景 8：触摸目标与命中 -------------------------------------------------------------------------
@@ -745,7 +782,7 @@
         const dnRight = countIn(rect.x + s * 0.5, rect.y + s * 0.58, s * 0.44, s * 0.34, C.paper, 26);
         const mine = run.dir === E().ACROSS ? dnRight : upRight;
         const foreign = run.dir === E().ACROSS ? upRight : dnRight;
-        const otherHomeClue = run.dir === E().ACROSS ? b.dn[run.home] : b.ac[run.home];
+        const otherHomeClue = run.dir === E().ACROSS ? b.down[run.home] : b.across[run.home];
         const foreignOk = otherHomeClue > 0 ? foreign >= 3 : foreign === 0;
         if (!(mine >= 3 && foreignOk)) {
           litBad++;
@@ -771,10 +808,26 @@
     const L10 = A().layout();
     eq('烧脑局 10×10', `${L10.w}×${L10.h}`, '10×10');
     eq('10×10 画布 CSS 宽 = cell×w+2P', L10.cssWidth, L10.cell * 10 + 12);
-    ck('同窗口下大盘格径收紧', L10.cell < L5.cell, `${L10.cell} < ${L5.cell}`);
+    ck('宽屏 620 avail 下 10×10 顶在 58 上限', L10.cell, 58);
     ck('大盘画布更宽', L10.cssWidth >= L5.cssWidth, `${L10.cssWidth} vs ${L5.cssWidth}`);
     eq('data-touch 诚实反映格径', $('#board').dataset.touch, L10.cell >= 44 ? '1' : '0');
     ck('格径不低于硬下限 26', L10.cell >= 26, String(L10.cell));
+
+    // 窄屏才见真章：把容器压窄再发一次真 resize，格径必须按公式收紧、data-touch 诚实翻 0。
+    const box = $('#view-game');
+    box.style.width = '300px';
+    window.dispatchEvent(new Event('resize'));
+    await wait(80);
+    const Ln = A().layout();
+    const availN = Math.max(260, Math.min(box.clientWidth - 380, 620));
+    eq('窄屏格径 = layoutFor 公式复算', Ln.cell, Math.max(26, Math.min(58, Math.floor(Math.max(160, availN - 12) / 10))));
+    ck('窄屏下大盘格径收紧', Ln.cell < L10.cell, `${Ln.cell} < ${L10.cell}`);
+    eq('窄屏画布 CSS 宽仍是 cell×10+12', Ln.cssWidth, Ln.cell * 10 + 12);
+    eq('格径掉到 44 以下时 data-touch 翻 0', $('#board').dataset.touch, '0');
+    box.style.width = '';
+    window.dispatchEvent(new Event('resize'));
+    await wait(80);
+    eq('恢复宽屏后格径回到原位', A().layout().cell, L10.cell);
     const q10 = runChecks(g10, 8);
     eq('烧脑局抽样 8 条 run 的 where 对拍', q10.whereBad, 0);
     eq('烧脑局抽样线索全部落位', `${q10.runs - q10.litBad}/${q10.runs}`, `${q10.runs}/${q10.runs}`);
@@ -817,6 +870,8 @@
     win,
     'resume-a': resumeA,
     'resume-b': resumeB,
+    'resume-c': resumeC,
+    'resume-d': resumeD,
     'dirty-a': dirtyA,
     'dirty-b': dirtyB,
     'dirty-c': dirtyC,

@@ -77,7 +77,7 @@ echo "boot: kakuro $BOOT at $BASE"
 [ "$BOOT" = "nope" ] && { echo "window.kakuro never appeared at $BASE" >&2; exit 4; }
 
 FAILED=0
-for s in ${SCENARIOS:-first play hint conflict win resume-a resume-b dirty-a dirty-b dirty-c touch geom}; do
+for s in ${SCENARIOS:-first play hint conflict win resume-a resume-b resume-c resume-d dirty-a dirty-b dirty-c touch geom}; do
   echo "=== $s ==="
   node tools/playtest.cjs scenario "$s" 2>/tmp/kakuro-$s.console.log | tail -1 | sed 's/^RESULT //' | python3 -c "
 import sys, json
