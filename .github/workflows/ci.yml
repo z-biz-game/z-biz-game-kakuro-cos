@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: syntax + engine guarantees
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No npm install: the game has zero runtime dependencies and zero build steps, so
+      # pulling a package graph into CI only buys network flakes. `npm run check` is the
+      # same command the developer runs locally, and it now also asserts the entry files.
+      - name: Syntax check every source
+        run: npm run check
+
+      - name: Syntax check the harness
+        run: |
+          for f in $(git ls-files 'tools/*.mjs' 'tools/*.cjs' tools/scenarios.js); do node --check "$f" || exit 1; done
+
+      # The real gate: every shipped board must be pencil-solvable AND have exactly one
+      # solution according to the second, deliberately distrustful solver. `--check` also
+      # re-derives each board from its clue string and byte-compares the file, so a board
+      # that drifted from its own clues cannot pass. `超预算` must be 0 in every tier —
+      # an exhausted node budget means uniqueness was never proven, and bake refuses it.
+      - name: Baked library re-verifies (zero-guess + unique + idempotent)
+        run: node tools/bake.mjs --check
+
+      # The ladder is a promise, not a caption: `TIERS[].band` is a selection target, and
+      # this step goes red if a tier stops landing in its own band, if the medians stop
+      # ordering strictly, or if any drawn board runs the brute-force counter out of budget.
+      # It also reconciles the DP combination table against real enumeration, cell by cell.
+      - name: Difficulty ladder is still measured
+        run: node tools/balance.mjs
+        env:
+          SAMPLES: "24"
+
+      # Unit assertions for the engine itself (rule soundness, counter agreement, clue
+      # minimality). tools/engine-test.mjs is not written yet; when it lands this step must
+      # drop the guard and fail unconditionally.
+      - name: Engine tests
+        run: |
+          if [ -f tools/engine-test.mjs ]; then
+            node tools/engine-test.mjs
+          else
+            echo "::warning::tools/engine-test.mjs 尚未落地，本轮跳过（下一轮必须改为无条件执行）"
+          fi
+
+      - name: Entry files exist
+        run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html && grep -q 'window.kakuro' js/main.js
