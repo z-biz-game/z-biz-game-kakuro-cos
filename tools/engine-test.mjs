@@ -309,13 +309,18 @@ const scanBoard = (board) => {
 };
 
 const ALL_CACHE = new Map();
-/** 穷举全部解（密集下标）。撞 `cap`/`nodeCap` 上限时如实报告 truncated。 */
-const allSolutions = (board, cap = 4000, nodeCap = 8_000_000) => {
-  const key = puzzleId(encodeBoard(board));
+/**
+ * 穷举全部解（密集下标）。撞 `cap`/`nodeCap` 上限时如实报告 truncated。
+ * `ignore` = 这一批 run 下标的"和"被擦掉（只留"同一条 run 不许重复"）——量"这条线索能不能省"时用，
+ * run 的下标口径与 count.js 的 buildRuns 相同（都是先行主扫横向、再列主扫纵向），两边能对上号。
+ */
+const allSolutions = (board, cap = 4000, nodeCap = 8_000_000, ignore = null) => {
+  const key = `${puzzleId(encodeBoard(board))}|擦掉${ignore && ignore.length ? ignore.join(',') : '无'}`;
   const hit = ALL_CACHE.get(key);
   if (hit) return hit;
   const bd = scanBoard(board);
   const { whites, ordinal, runs, cellRuns, n } = bd;
+  const wild = ignore && ignore.length ? new Set(ignore) : null;
   const values = new Uint8Array(n);
   const sum = runs.map(() => 0);
   const used = runs.map(() => 0);
@@ -349,6 +354,7 @@ const allSolutions = (board, cap = 4000, nodeCap = 8_000_000) => {
         }
         const left = run.len - posOf[id].get(t) - 1;
         const s = sum[id] + d;
+        if (wild && wild.has(id)) continue; // 这一条的和被擦掉了：只剩"不许重复"
         // 松弛界：剩下 left 格至少 1+2+…、至多 9+8+…，加上不重复的粗略下界 left
         if (s > run.clue || s + left > run.clue || s + 9 * left < run.clue) {
           good = false;
@@ -957,6 +963,329 @@ head('D 进差法：差集前提独立复算 + 每个结论独立确认');
   note(`复算的片区前提 ${premiseChecked} 条（去重后 ${sayings.size} 种说法）、差集恒等式 ${invariantChecked} 次、进差法记账口径 ${arithmeticChecked} 条、渲染文本 ${regionTextChecked} 条`);
   note(`按档实测用到进差法的局数：${tierStat.map((x) => `${x.T.name} ${x.used}/${x.n}`).join('、')}`);
   note(`片区说明缺失 ${missingText}/${regionEvents} 条、渲染文本不达标 ${regionTextBad} 条、前提复算不一致 ${premiseBad} 条`);
+}
+
+// =================================================================================================
+// E 两套实现逐格一致
+// =================================================================================================
+
+head('E 两套实现逐格一致：铅笔与穷举各扫各的网格、各算各的和');
+{
+  let eStatusBad = 0;
+  let ePencilBad = 0;
+  let eDiffCells = 0;
+  let eDenseBad = 0;
+  let eGeomBad = 0;
+  let eCells = 0;
+  let eRuns = 0;
+  let eNodesMax = 0;
+  const eStatusText = [];
+  let firstCellBad = '';
+  let firstGeomBad = '';
+  for (const { e, board } of LIB) {
+    const res = solve(board);
+    const cnt = countSolutions(board, { limit: 2 });
+    if (!res.ok) ePencilBad++;
+    if (cnt.status !== UNIQUE) {
+      eStatusBad++;
+      eStatusText.push(`${e.id} 报 status=${cnt.status}`);
+    }
+    eNodesMax = Math.max(eNodesMax, cnt.nodes);
+    const diff = diffCells(board, res.values || new Uint8Array(board.n), cnt.values);
+    eDiffCells += diff.length;
+    if (diff.length && !firstCellBad) {
+      const t = diff[0];
+      firstCellBad = `${e.id} 网格第 ${t + 1} 格：铅笔给 ${res.values[board.ordinal[t]]}、穷举给 ${cnt.values[t]}`;
+    }
+    const dense = toDense(board, cnt.values);
+    for (let t = 0; t < board.n; t++) {
+      eCells++;
+      if (dense[t] !== res.values[t]) eDenseBad++;
+    }
+    const mine = buildRuns(board);
+    eRuns += mine.length;
+    if (mine.length !== board.runs.length) {
+      eGeomBad++;
+      if (!firstGeomBad) firstGeomBad = `${e.id}：count.js 扫出 ${mine.length} 条 run，引擎的表里有 ${board.runs.length} 条`;
+      continue;
+    }
+    for (let i = 0; i < mine.length; i++) {
+      const a = mine[i];
+      const b = board.runs[i];
+      if (a.dir !== b.dir || a.clue !== b.clue || a.len !== b.len || a.home !== b.home || a.cells.join(',') !== b.gridCells.join(',')) {
+        eGeomBad++;
+        if (!firstGeomBad) firstGeomBad = `${e.id} 第 ${i + 1} 条 run：count.js ${JSON.stringify({ dir: a.dir, clue: a.clue, home: a.home, cells: a.cells })}，引擎 ${JSON.stringify({ dir: b.dir, clue: b.clue, home: b.home, cells: b.gridCells })}`;
+        break;
+      }
+    }
+  }
+  eq('E1 库里 25 局穷举都数到"恰好一个解"（status=UNIQUE，不是 MANY 也不是超预算）', eStatusBad, 0, eStatusText.join('、'));
+  eq('E2 库里 25 局铅笔都推得完', ePencilBad, 0);
+  eq(`E3 两套实现逐格比对：${eCells} 格零不一致（diffCells 只认网格下标）`, eDiffCells, 0, firstCellBad);
+  eq('E4 toDense 的"网格下标→密集下标"换算不改变任何一格', eDenseBad, 0);
+  eq(`E5 两份各自扫出的 run 表逐条相同（共 ${eRuns} 条：方向/格子/和/家格全长一致）`, eGeomBad, 0, firstGeomBad);
+  note(`25 局共比对 ${eCells} 个白格、${eRuns} 条 run；穷举节点最多一局用到 ${eNodesMax}（预算 ${DEFAULT_MAX_NODES}）`);
+
+  // count.js 有没有偷偷读引擎那份表？把 runs/whites/cellOf/ordinal/_regions 全抹掉再数一遍。
+  let poisonSame = 0;
+  let pencilBroken = 0;
+  let poisonDetail = '';
+  for (const i of [0, 24]) {
+    const code = LEVELS[i].code;
+    const cleanBoard = decodePuzzle(code);
+    const clean = countSolutions(cleanBoard, { limit: 2 });
+    const dirty = decodePuzzle(code);
+    const n = dirty.size;
+    dirty.runs = [];
+    dirty.whites = [];
+    dirty.cellOf = new Int32Array(n).fill(-1);
+    dirty.ordinal = new Int32Array(n).fill(-1);
+    dirty._regions = [];
+    const again = countSolutions(dirty, { limit: 2 });
+    if (shown(again.values) === shown(clean.values) && again.status === clean.status && again.nodes === clean.nodes) poisonSame++;
+    else if (!poisonDetail) poisonDetail = `${LEVELS[i].id}：抹掉引擎表之后 count.js 给出的解变了（${shown(again.values)} ≠ ${shown(clean.values)}）—— 两套实现共用了同一份几何`;
+    let pencilOk = false;
+    try {
+      pencilOk = solve(dirty).ok === true;
+    } catch {
+      pencilOk = false;
+    }
+    if (!pencilOk) pencilBroken++;
+  }
+  eq('E6 抹掉引擎的 run 表/密集下标/片区缓存后，countSolutions 一字不变（几何真的各写了一遍）', poisonSame, 2, poisonDetail);
+  eq('E7 同一份抹掉对铅笔路径是要出事的（证明 E6 不是一条空断言）', pencilBroken, 2, '铅笔在残缺盘上居然照常推完，说明它也没读那些表');
+
+  const many = countSolutions(HMANY.board, { limit: 2 });
+  eq('E8 手算 8 解的人工盘：limit=2 下报 MANY（多解不会被当成唯一）', many.status, MANY);
+  const manyWide = countSolutions(HMANY.board, { limit: 20 });
+  const myMany = allSolutions(HMANY.board).sols.length;
+  eq('E9 放开 limit 后两套穷举数到同一个解数（本文件 8 = count.js 8）', `${myMany}/${manyWide.count}`, '8/8');
+  const noneCnt = countSolutions(HNONE.board, { limit: 2 });
+  eq('E10 线索互相矛盾的人工盘：status=NONE 且 count=0（不是"唯一"、也不是超预算）', `${noneCnt.status}/${noneCnt.count}`, `${NONE}/0`);
+  eq('E11 无解盘的 uniqueSolution 给 null', uniqueSolution(HNONE.board), null);
+  note(`人工盘对照：HMANY ${myMany} 解（limit=2 时 ${many.status === MANY ? '报 MANY' : '没报 MANY'}）、HNONE ${noneCnt.count} 解`);
+}
+
+// =================================================================================================
+// F 超预算 ≠ 唯一
+// =================================================================================================
+
+head('F 超预算 ≠ 唯一：status=-1、uniqueSolution=null、audit 拒收、出货路径丢弃');
+{
+  eq('F1 四个状态常量：NONE=0 / UNIQUE=1 / MANY=2 / OVERBUDGET=-1', `${NONE}/${UNIQUE}/${MANY}/${OVERBUDGET}`, '0/1/2/-1');
+  const big = LIB[LIB.length - 1].board;
+  const idBig = LIB[LIB.length - 1].e.id;
+  const budget = 30;
+  const starved = countSolutions(big, { maxNodes: budget });
+  eq(`F2 ${idBig} 在 ${budget} 节点预算下的 status 是 OVERBUDGET，绝不是 UNIQUE`, starved.status, OVERBUDGET);
+  eq('F3 撞墙时 nodes 确实用爆了预算（不是提前收手）', starved.nodes > budget, true, `nodes=${starved.nodes}`);
+  eq('F4 撞墙时 count 必然还没到 2 —— 所以"没数出第二个"绝不能读成"只有一个"', starved.count < 2, true, `数到 ${starved.count} 个`);
+  eq('F5 uniqueSolution 在超预算时给 null（不是 true，也不是第一个解）', uniqueSolution(big, { maxNodes: budget }), null);
+  const a = audit(big, undefined, { maxNodes: budget });
+  eq('F6 audit 拒收超预算盘：ok=false', a.ok, false);
+  eq('F7 audit 把拒收原因显式标成 overbudget=true', a.overbudget, true, `拿到的字段：${Object.keys(a).join(',')}`);
+  ok('F8 audit 的 why 说"没数完"，不含糊说"不唯一"', /还没数完/.test(String(a.why)), `why=${String(a.why)}`);
+  eq('F9 audit 报出的 nodes/budget 与计数器一致', `${a.nodes}/${a.budget}`, `${starved.nodes}/${starved.budget}`);
+  const starvedHand = countSolutions(HMANY.board, { maxNodes: 2 });
+  eq('F10 8 解的人工盘在 2 节点预算下也是 OVERBUDGET（超预算与盘本身有没有解无关）', starvedHand.status, OVERBUDGET);
+  const msg = throwsWith('F11 出货路径：小预算下入门档抽满一程也拒不出一局', () => makePuzzle({ tier: 0, seed: 1, maxNodes: 4 }), '穷举超预算');
+  const rej = /穷举超预算 (\d+)/.exec(msg);
+  ok('F12 抛错里如实报出丢弃张数（>0）', !!rej && Number(rej[1]) > 0, `抛错：${msg}`);
+  const tight = makePuzzle({ tier: 0, seed: 1, maxNodes: 6 });
+  eq('F13 稍放宽一点：出货的那一局本身节点数没碰预算（丢弃过的候选一律没被放行）', `${tight.meta.countNodes <= 6}/${tight.meta.budgetReject > 0}/${tight.meta.overbudget === 0}`, 'true/true/true');
+  eq('F14 那一局在默认预算下复核仍是唯一解', countSolutions(tight.board, { limit: 2 }).status, UNIQUE);
+  const normal = makePuzzle({ tier: 0, seed: 1 });
+  eq('F15 正常预算下同一档同一种子照常出货', `${normal.meta.overbudget}/${audit(normal.board, undefined, {}).ok}`, '0/true');
+  note(`入门档实测：4 节点预算 → 抽满 ${TIERS[0].maxAttempts} 张拒不出货；6 节点 → 出货（丢弃 ${tight.meta.budgetReject} 张超预算候选、用的节点 ${tight.meta.countNodes}）`);
+  note(`烧脑 ${idBig}：默认预算下 ${countSolutions(big, { limit: 2 }).nodes} 节点数完，${budget} 节点就只能报 OVERBUDGET（默认预算 ${DEFAULT_MAX_NODES}）`);
+}
+
+// =================================================================================================
+// G 铅笔推得完
+// =================================================================================================
+
+head('G 铅笔推得完：25 局每一格都被推出来，独立验收零问题');
+{
+  let notOk = 0;
+  let conflicted = 0;
+  let filledBad = 0;
+  let verifyBad = 0;
+  let diagBad = 0;
+  let completeBad = 0;
+  let valueBad = 0;
+  let cells = 0;
+  let runsTotal = 0;
+  let prunesTotal = 0;
+  let placesTotal = 0;
+  let firstG = '';
+  const perTier = TIERS.map(() => 0);
+  for (const { e, board } of LIB) {
+    const res = solve(board);
+    cells += board.n;
+    runsTotal += board.runs.length;
+    prunesTotal += res.prunes;
+    placesTotal += res.places;
+    if (!res.ok) notOk++;
+    if (res.conflict) conflicted++;
+    const vals = res.values || new Uint8Array(board.n);
+    if (res.filled !== board.n || vals.length !== board.n) {
+      filledBad++;
+      if (!firstG) firstG = `${e.id}：filled=${res.filled}，白格=${board.n}`;
+    }
+    for (const t of board.whites) if (!(vals[t] >= MIN_DIGIT && vals[t] <= MAX_DIGIT)) valueBad++;
+    const problems = verify(board, vals);
+    if (problems.length) {
+      verifyBad++;
+      if (!firstG) firstG = `${e.id}：verify 报 ${problems.length} 条，第一条 ${JSON.stringify(problems[0])}`;
+    }
+    const dg = diagnose(board, vals);
+    if (dg.remaining !== 0 || dg.conflicts !== 0 || dg.satisfied !== board.runs.length || dg.filled !== board.n) diagBad++;
+    if (!complete(board, vals)) completeBad++;
+    perTier[e.tier]++;
+  }
+  eq(`G1 25 局全部推得完（solve().ok，共 ${cells} 个白格）`, notOk, 0, firstG);
+  eq('G2 25 局没有一局被铅笔判矛盾（generate.js 里这是"最严重的一类缺陷"）', conflicted, 0);
+  eq('G3 filled 恰等于白格数、values 长度恰等于 board.n', filledBad, 0, firstG);
+  eq('G4 推出的每个数字都在 1..9（没有 0 混进答案里）', valueBad, 0);
+  eq(`G5 verify(铅笔的解) 零问题（${runsTotal} 条 run 的和独立复算）`, verifyBad, 0, firstG);
+  eq('G6 diagnose 读数自洽：满盘、零冲突、每条 run 都对上了和', diagBad, 0);
+  eq('G7 complete() 认同这批解', completeBad, 0);
+  let tamperMissed = 0;
+  let tamperChecked = 0;
+  for (const { e, board } of LIB) {
+    const solved = solve(board);
+    if (!solved.ok) continue;
+    const vals = Uint8Array.from(solved.values);
+    const t = board.whites[0];
+    const before = vals[t];
+    vals[t] = before === 9 ? 1 : before + 1;
+    tamperChecked++;
+    if (verify(board, vals).length === 0) {
+      tamperMissed++;
+      if (!firstG) firstG = `${e.id}：把第 ${t + 1} 格从 ${before} 改成 ${vals[t]}，verify 竟说没问题`;
+    }
+  }
+  eq(`G8 手改一格数字后 verify 立刻抓到（${tamperChecked} 盘全抓到，G5 不是空断言）`, tamperMissed, 0, firstG);
+  note(`25 局实测：落子 ${placesTotal} 步、划候选 ${prunesTotal} 次、白格 ${cells} 个、run ${runsTotal} 条；每档 ${perTier.join('/')} 局全部推得完`);
+  note(`库里带 overbudget 标记的局：${LIB.filter(({ e }) => e.overbudget).length}/25（出货口径要求 0，见 F 节）`);
+}
+
+// =================================================================================================
+// H 冗余线索实测口径
+// =================================================================================================
+
+head('H 冗余线索实测：只断言承诺过的，实测数字一律打出来');
+{
+  const MAX_PROVE_NODES = 200_000;
+  let shapeBad = 0;
+  let runsMismatch = 0;
+  let boundBad = 0;
+  let recBad = 0;
+  let clueRangeBad = 0;
+  let sumBad = 0;
+  let unprovenShort = 0;
+  let redundantTotal = 0;
+  let unprovenTotal = 0;
+  let runsTotal = 0;
+  let boardsWithRedundant = 0;
+  let boardsWithUnproven = 0;
+  const perProbe = [];
+  let firstH = '';
+  for (const { e, board } of LIB) {
+    const r = redundantClues(board);
+    if (!Array.isArray(r.redundant) || !Array.isArray(r.unproven) || !Number.isInteger(r.runs) || r.runs <= 0) {
+      shapeBad++;
+      if (!firstH) firstH = `${e.id}：返回的形状不是 {redundant[], unproven[], runs}`;
+      continue;
+    }
+    if (r.runs !== board.runs.length) {
+      runsMismatch++;
+      if (!firstH) firstH = `${e.id}：探了 ${r.runs} 条线索，这一局其实有 ${board.runs.length} 条`;
+    }
+    if (r.redundant.length + r.unproven.length > r.runs) boundBad++;
+    runsTotal += r.runs;
+    redundantTotal += r.redundant.length;
+    unprovenTotal += r.unproven.length;
+    if (r.redundant.length) boardsWithRedundant++;
+    if (r.unproven.length) boardsWithUnproven++;
+    perProbe.push(`${e.id} ${r.redundant.length}/${r.runs}${r.unproven.length ? `（未数完 ${r.unproven.length}）` : ''}`);
+    for (const rec of r.redundant) {
+      const twin = board.runs.find((x) => x.home === rec.home && x.dir === rec.dir);
+      if (!twin || rec.status !== UNIQUE || !(rec.nodes >= 0)) {
+        recBad++;
+        if (!firstH) firstH = `${e.id}：redundant 里记了一条对不上 run 表/状态不是 UNIQUE 的项 ${JSON.stringify(rec)}`;
+      }
+    }
+    for (const rec of r.unproven) {
+      const twin = board.runs.find((x) => x.home === rec.home && x.dir === rec.dir);
+      if (!twin || rec.status !== OVERBUDGET || !(rec.nodes >= 0)) {
+        recBad++;
+        if (!firstH) firstH = `${e.id}：unproven 里记了一条对不上 run 表/状态不是 OVERBUDGET 的项 ${JSON.stringify(rec)}`;
+      }
+      if (rec.nodes < MAX_PROVE_NODES) {
+        unprovenShort = 1;
+        if (!firstH) firstH = `${e.id}：unproven 记的 nodes=${rec.nodes} 没到口径写的 ${MAX_PROVE_NODES} 节点预算，那就不算"预算内没数完"`;
+      }
+    }
+    // 承诺一：每一条写着的线索都在合法区间里
+    for (const run of board.runs) {
+      const arr = run.dir === ACROSS ? board.across : board.down;
+      const v = arr[run.home];
+      if (!(v >= 1 && v <= 45) || !clueLegal(run.len, v)) {
+        clueRangeBad++;
+        if (!firstH) firstH = `${e.id} ${run.where}：写着 ${v}，长度 ${run.len} 的合法区间是 ${minSum(run.len)}~${maxSum(run.len)}`;
+      }
+    }
+    // 承诺二：本文件自己扫网格，逐条 run 把解的数字加起来核对它写的和
+    const { runs, ordinal } = scanBoard(board);
+    const vals = solve(board).values || new Uint8Array(board.n);
+    for (const run of runs) {
+      let s = 0;
+      for (const t of run.cells) s += vals[ordinal[t]];
+      if (s !== run.clue) {
+        sumBad++;
+        if (!firstH) firstH = `${e.id}：网格扫出的 ${run.dir} run（${run.len} 格、写着 ${run.clue}）按解算出来是 ${s}`;
+      }
+    }
+  }
+  eq('H1 redundantClues 的返回形状是 {redundant[], unproven[], runs}（不是裸数组）', shapeBad, 0, firstH);
+  eq(`H2 探过的线索条数等于每一局的 run 数（共 ${runsTotal} 条）`, runsMismatch, 0, firstH);
+  eq('H3 每一局 redundant + unproven ≤ runs（没探出结果的一格也不能漏报）', boundBad, 0);
+  eq('H4 redundant/unproven 里的每一项都指得回这一局真实的那条 run，状态与归类相符', recBad, 0, firstH);
+  eq(`H5 unproven 记的 nodes 真的用满了 ${MAX_PROVE_NODES} 节点预算（"没数完"不是提前收手）`, unprovenShort, 0, firstH);
+  eq('H6 承诺一：库里每条写着的线索都落在 1..45 且对它那条 run 合法', clueRangeBad, 0, firstH);
+  eq('H7 承诺二：本文件独立扫网格，按解复算每条 run 的和都等于它写的线索', sumBad, 0, firstH);
+
+  // 承诺三的口径本身：把某条 run 的和擦掉之后"还剩几个解"，本文件自己数一遍，
+  // 与 redundantClues 的判定逐条对账。只在能数得完的小盘上做（大盘的解数会爆）。
+  let crossChecked = 0;
+  let crossBad = 0;
+  for (const { label, board } of [{ label: '人工 H4', board: H4.board }, { label: codeLabel(LIB[0].e), board: LIB[0].board }]) {
+    const r = redundantClues(board);
+    const own = buildRuns(board);
+    const idxOf = new Map(own.map((run, i) => [`${run.dir}:${run.home}`, i]));
+    for (const run of own) {
+      const { sols, truncated } = allSolutions(board, 4000, 8_000_000, [run.id]);
+      if (truncated) continue;
+      const i = idxOf.get(`${run.dir}:${run.home}`);
+      const mine = sols.length;
+      const engineSaysRedundant = r.redundant.some((rec) => idxOf.get(`${rec.dir}:${rec.home}`) === i);
+      const engineSaysUnproven = r.unproven.some((rec) => idxOf.get(`${rec.dir}:${rec.home}`) === i);
+      if (engineSaysUnproven) continue;
+      crossChecked++;
+      if ((mine === 1) !== engineSaysRedundant) {
+        crossBad++;
+        if (!firstH) firstH = `${label} 擦掉第 ${run.id + 1} 条 run（${run.len} 格）的和：本文件数出 ${mine} 个解，redundantClues 判"可省"=${engineSaysRedundant}`;
+      }
+    }
+  }
+  eq('H8 "擦掉这条线索仍唯一"由本文件的独立穷举逐条复核（小盘上口径不漂）', crossBad, 0, `对账 ${crossChecked} 条；${firstH}`);
+  note(`实测 25 局、${runsTotal} 条线索：可省 ${redundantTotal} 条、200k 节点内没数完 ${unprovenTotal} 条、` +
+    `被量出"非省不可"的 ${runsTotal - redundantTotal - unprovenTotal} 条；有可省线索的局 ${boardsWithRedundant}/25，有未数完项的局 ${boardsWithUnproven}/25`);
+  note(`小盘上把每一条线索单独擦掉、由本文件自己数解：与 redundantClues 的判定对账 ${crossChecked} 条（H4 与 c0p0），不一致 ${crossBad} 条`);
+  note(`逐局（id 可省/探过）：${perProbe.join(' ')}`);
+  note(`这一节**不断言**冗余线索为 0："每一条线索都承重"从来不在承诺里；` +
+    `承诺的是"唯一解在预算内证完 + 铅笔推得完 + 两套实现逐格相同"，那些由 E/F/G 各节逐格量`);
 }
 
 console.log(`\n${pass} 通过 / ${fail} 失败`);
