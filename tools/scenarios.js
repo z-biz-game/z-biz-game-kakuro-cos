@@ -283,17 +283,22 @@
     eq('候选读数', text('#stat-cands'), game.candidatesOf(t).join(' '));
     await click('#btn-mode-ink');
     eq('切回写数字', game.mode, 'ink');
+    // 抹掉后 notes=initMask（上一步已实测），再 XOR 两个不在 initMask 里的位：
+    // 此刻的铅笔必然不是引擎候选的子集，"按候选填满"必须改写它。
+    const preFill = game.notes[t];
+    ck('填满前铅笔带着引擎候选域外的位', (preFill & ~b.initMask[t]) !== 0, `preFill=${preFill} init=${b.initMask[t]}`);
     await click('#btn-fill-notes');
+    ck('按候选填满改写了铅笔', game.notes[t] !== preFill, `before=${preFill} after=${game.notes[t]}`);
     ck('按候选填满铅笔后候选非空', game.notes[t] > 0, String(game.notes[t]));
     ck('引擎候选 ⊆ 初始候选域', (game.notes[t] & ~b.initMask[t]) === 0, `mask=${game.notes[t]} init=${b.initMask[t]}`);
 
     // 撤销链条：autoNotes 不计步，撤销要先退掉它再退铅笔
     const movesBefore = game.moves;
     await click('#btn-undo');
-    eq('撤销退掉候选填满', game.notes[t], wantMask);
+    eq('撤销退掉候选填满', game.notes[t], preFill);
     eq('候选填满本身不计步', game.moves, movesBefore);
     await click('#btn-undo');
-    eq('再撤一步退掉最后一笔铅笔', game.notes[t], 1 << d1);
+    eq('再撤一步退掉最后一笔铅笔', game.notes[t], preFill ^ (1 << d2));
     eq('铅笔落子计了步', game.moves, movesBefore - 1);
 
     // 铅笔显/藏
