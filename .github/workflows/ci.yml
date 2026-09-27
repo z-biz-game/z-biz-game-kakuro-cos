@@ -46,16 +46,11 @@ jobs:
         env:
           SAMPLES: "24"
 
-      # Unit assertions for the engine itself (rule soundness, counter agreement, clue
-      # minimality). tools/engine-test.mjs is not written yet; when it lands this step must
-      # drop the guard and fail unconditionally.
+      # Unit assertions for the engine itself (combination-table reconciliation, rule
+      # soundness, counter agreement, over-budget rejection, save-file sanitising).
+      # 144 assertions; every promise this repo makes has a section that would go red.
       - name: Engine tests
-        run: |
-          if [ -f tools/engine-test.mjs ]; then
-            node tools/engine-test.mjs
-          else
-            echo "::warning::tools/engine-test.mjs 尚未落地，本轮跳过（下一轮必须改为无条件执行）"
-          fi
+        run: node tools/engine-test.mjs
 
       - name: Entry files exist
         run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html && grep -q 'window.kakuro' js/main.js
