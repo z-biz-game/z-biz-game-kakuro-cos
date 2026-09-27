@@ -51,9 +51,57 @@ jobs:
       # measured redundant clues). 144 assertions; every promise this step names has a
       # section that would go red. Hand-edged save files are NOT checked here — they need
       # a real localStorage, so that promise is held by tools/verify.sh's dirty-a/b/c
-      # scenarios, which CI does not run.
+      # scenarios, which run in the `browser` job below (both URL shapes).
       - name: Engine tests
         run: node tools/engine-test.mjs
 
       - name: Entry files exist
         run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html && grep -q 'window.kakuro' js/main.js
+
+  # The dirty-a/b/c and resume-* scenarios are the only thing that ever touches a real
+  # localStorage, so before this job the promise "hand-edged save files are swallowed" was held
+  # by 230 assertions that ran exclusively on the machine that wrote them. `check` going green
+  # said nothing about the page — and the comment on the engine step used to say so out loud.
+  browser:
+    name: real browser gate (both URL shapes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 22, not the 20 the check job uses: tools/playtest.cjs is a raw CDP driver written against
+      # Node's global WebSocket/fetch, which only exist from 22 on. On 20 the first attach dies
+      # with "WebSocket is not defined" and the job goes red before a single assertion runs —
+      # the sibling repo loshu found this on a runner while its local gate stayed green.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Root shape: server.cjs makes the repo the document root, the only shape a laptop sees.
+      # verify.sh refuses to bind over an occupied port, and a scenario returning NO RESULT or
+      # asserting nothing exits non-zero, so a silently dead harness cannot read green here.
+      - name: Browser gate, root shape
+        env:
+          WD_TIMEOUT: 900
+        run: bash tools/verify.sh
+
+      # Prefix shape: Pages serves this repo under a path segment
+      # (https://z-biz-game.github.io/z-biz-game-kakuro-cos/), and a root-shaped server cannot
+      # tell a leading-slash specifier from a relative one. The sibling repo ulam lost 19
+      # assertions that never ran on the deployed site exactly that way while its local gate
+      # was green, so the prefix pass is part of the gate, not a footnote.
+      - name: Browser gate, prefix shape (how Pages serves us)
+        env:
+          WD_TIMEOUT: 900
+        run: |
+          root=$(mktemp -d)
+          ln -s "$GITHUB_WORKSPACE" "$root/z-biz-game-kakuro-cos"
+          python3 -m http.server 5396 --bind 127.0.0.1 --directory "$root" &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null' EXIT
+          for i in $(seq 1 40); do
+            curl -fsS -m 2 "http://127.0.0.1:5396/z-biz-game-kakuro-cos/" >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS -m 3 "http://127.0.0.1:5396/z-biz-game-kakuro-cos/js/main.js" >/dev/null
+          curl -fsS -m 3 "http://127.0.0.1:5396/z-biz-game-kakuro-cos/js/engine/kakuro.js" >/dev/null
+          BASE_URL=http://127.0.0.1:5396/z-biz-game-kakuro-cos/ bash tools/verify.sh
+

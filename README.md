@@ -189,7 +189,11 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0
   而不是"这条线索必要"；要下结论只能加 `REDUNDANT_NODES` 重跑。
 - CI（`.github/workflows/ci.yml`）跑 check / bake --check / balance(SAMPLES=24) / 引擎测试 / 入口文件，
   **不 `npm install`**：零运行时依赖、零构建步骤，装依赖只会换来网络抖动。
-  浏览器门禁不进 CI（要本机 Chrome）。
+  浏览器门禁也进 CI：`browser` job 把 `npm run verify` 那 14 个场景跑两遍——root 形态（`server.cjs` 把仓库当文档根）
+  与 Pages 真实形态（仓库挂在 `/<repo>/` 一段下）。第二遍不是凑对称：根形态的服务器分不出
+  "斜杠开头的 import"和"相对 import"，同组织的 ulam 就在 Pages 前缀下丢过一整段根本没跑的断言，
+  本机却全绿。`node-version: 22` 是被 `tools/playtest.cjs` 钉的——它用 22+ 才有的全局
+  `WebSocket`/`fetch`，在 20 上第一条 attach 就死。
 
 ---
 
@@ -205,10 +209,12 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0
   铅笔走"每格 2 字节小端 + RLE"；读进来每个字段都过 `sanitize*`，脏数据吞得下、
   `localStorage` 整个儿抛异常（隐私模式）也照样能玩；`reset` 内存与磁盘两边都清。
 - 规模：13 个运行时 ES Module + 6 个验证脚本，**运行时依赖 0 个**；
-  引擎测试 144 条断言、浏览器断言 224 条，均为实测（出处见上）。
+  引擎测试 144 条断言、浏览器断言 230 条，均为实测（出处见上）。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
-  **本仓此刻尚未上线**，所以上面没写"线上产物已验证"。
+  线上产物已核：2026-09-28 把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
+  15 个相同、0 个不一致；同一天的三形态实跑（本机 root 230/0、本机 Pages 前缀 230/0、
+  `BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify` 230/0）都是 exit 0。
 
 ---
 

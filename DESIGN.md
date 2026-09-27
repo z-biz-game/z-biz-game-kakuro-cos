@@ -1,7 +1,7 @@
 # 设计说明 · 加算十字 Kakuro
 
 这份文件讲"为什么这样写"。要跑起来请看 `README.md`；要看断言请看 `tools/engine-test.mjs`
-（144 条，A–H 八节）与 `tools/scenarios.js`（14 个场景 / 224 条浏览器断言）——
+（144 条，A–H 八节）与 `tools/scenarios.js`（14 个场景 / 230 条浏览器断言）——
 **这个项目里的每一句承诺，都对应一条会红的断言或一个实测数字。**
 
 代码里有五处注释按小节号指回这份文档，编号就是它们的地址：
@@ -256,7 +256,10 @@ npm run check                  # 逐文件 node --check + 入口断言 → OK
 npm test                       # 144 条引擎断言（A–H 八节，每节打实测数字）
 npm run bake -- --check        # ✓ 25 局复验一致；五档各「超预算 0 局」，节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance     # 对账 405 格 0 处不一致；中位数阶梯；各档超预算 0/N → exit 0
-npm run verify                 # 本机 headless Chrome：14 个场景 / 224 条断言 / 0 失败（5316 / 9366）
+npm run verify                 # 本机 headless Chrome：14 个场景 / 230 条断言 / 0 失败（5316 / 9366）
+                               # CI 的 browser job 把这一套跑两遍（root 与 Pages 的 /<repo>/ 前缀）；
+                               # 2026-09-28 三形态各自实测：本机 root 230/0、本机前缀 230/0、
+                               # BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ 230/0
 ```
 
 `tools/scenarios.js` 的纪律与 `tools/engine-test.mjs` 一致：期望值**手写死**，读 DOM 几何与
