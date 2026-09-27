@@ -309,7 +309,13 @@ export const Rules = {
     level: 3,
     weight: 5,
     text: (b, d) =>
-      `${d.regionText}${d.digit == null ? '' : ` ${b.name(d.cell)} 填 ${d.digit} 就凑不出这个和，划掉。`}`,
+      `${d.regionText || ''}${
+        d.digit == null
+          ? ''
+          : d.kind === 'place'
+            ? ` ${b.name(d.cell)} 被这片区的和夹到只剩 ${d.digit}，写下。`
+            : ` ${b.name(d.cell)} 填 ${d.digit} 就凑不出这个和，划掉。`
+      }`,
   },
   bare: {
     key: 'bare',
@@ -575,16 +581,30 @@ function drainSingles(board, val, mask, events) {
     if (val[t] || POP(mask[t]) !== 1) continue;
     const d = FIRST(mask[t]);
     const cause = lastCause(events, t);
-    place(board, val, mask, events, t, d, cause || Rules.bare, cause ? cause.run : board.acrossRun[t], { digit: d });
+    const extra = { digit: d };
+    if (cause && cause.regionText) extra.regionText = cause.regionText;
+    place(
+      board,
+      val,
+      mask,
+      events,
+      t,
+      d,
+      !cause || cause.rule === Rules.combo ? Rules.bare : cause.rule,
+      cause ? cause.run : board.acrossRun[t],
+      extra,
+    );
     changed = true;
   }
   return changed;
 }
 
+// 这一格的候选是被哪一步划掉的：那条的规则、它所属的 run、以及（进差法的）片区说明都要跟着
+// 落子事件走 —— 不然提示只说得出半句话（"填 7 就凑不出这个和"，可"这个和"是谁没说）。
 function lastCause(events, t) {
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
-    if (e.kind === 'prune' && e.cell === t) return e.rule === Rules.combo ? Rules.bare : e.rule;
+    if (e.kind === 'prune' && e.cell === t) return e;
   }
   return null;
 }
