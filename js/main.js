@@ -312,7 +312,8 @@ function start(puzzleLike, { resume = null } = {}) {
     bindCanvas();
   }
   el.winVeil.hidden = true;
-  if (resume) game.restore(resume);
+  // 存档里的用时字段叫 ms，restore() 收的是 elapsedMs：不映射过去，刷新就白送一个归零计时。
+  if (resume) game.restore({ ...resume, elapsedMs: Number(resume.elapsedMs ?? resume.ms) | 0 });
   else game.load(puzzle);
   if (resume) {
     game.moves = resume.moves || 0;
