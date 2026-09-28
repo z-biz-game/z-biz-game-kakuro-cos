@@ -113,8 +113,8 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
   （F 节：入门档在 4 节点预算下抽满 6,000 张也**拒不出一局**；放宽到 6 节点才出货，
   并如实报出丢弃了 10 张超预算候选）。想要更多题只有一个正当办法：加预算或缩小该档盘面。
 - **未验证**（跑过才有资格写，这里没跑过）：Safari / Firefox / 移动端实机——门禁只在本机
-  headless Chrome 上跑；Pages 线上产物——本仓尚未上线，`BASE_URL=… npm run verify` 这一条
-  没执行过；低端机上的出题耗时；读屏与键盘无障碍。
+  headless Chrome（外加 runner 那种经典滚动条形态）上跑；低端机上的出题耗时；读屏与键盘无障碍。
+  Pages 线上产物**已验证**：逐字节比回 HEAD 加上对着 CDN 实跑一遍闸，数字在"技术形态"节末。
 - **两条"只有代码、没有断言"的缺口**（写在这里而不是藏在形容词里）：
   ① `js/store.js` 的清洗函数在**引擎测试里没有断言**（`tools/engine-test.mjs:82` 起 import 了
   `sanitize*` / `rleEncode` / `createStore` 却没用），存档形状的实测出处全部在浏览器
@@ -218,12 +218,13 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
   线上产物按这一条核对：把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
-  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `12a1b03` 那一次的结果记在下面
+  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `7a26fb0`（2026-09-28）这一次的结果记在下面
   （它比"最新"更结实：每次上线都换一个新的观测值，只有锚定的那次能说它当时是多少）——
-  15 个相同、0 个不一致；同一天的三形态实跑（本机 root 230/0、本机 Pages 前缀 230/0、
-  `BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify` 230/0）都是 exit 0。
-  那三遍跑的是 `12a1b03` 的 230 条；胜利卡那条断言改成"入场落定之后再量"（231 条）之后，
-  线上口径另跑一遍并记在同一处。
+  `pages.yml` 那条部署 job 自己报 success；15 个相同、0 个不一致；对着 CDN 实跑是
+  **14 场景 231 条 / 0 失败**、exit 0，`win` 那条交回 `againBox [98, 44]` 对 `laidOut '44px'`、
+  `settleTicks 10`、`flightAnims ['rise:running:33']`——量之前入场动画还在飞，落定之后再读就是
+  这只盒自己的布局高度。同一 SHA 在 runner 上两形各一遍也是 14/231/0，引擎那条打
+  `144 通过 / 0 失败`。
 
 ---
 
