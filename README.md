@@ -42,9 +42,9 @@
 | **点白格** / **方向键** | 选中这一格（点黑格不会改变选中：黑格只是写着和） |
 | **`1`…`9`** 或点数字键盘 | 落子。写数字之前引擎只拦"硬违反"：同一条 run 里重复、和超界、或者剩下怎么都凑不出这个和——并点名是哪条 run（`legalPlace`，`js/engine/kakuro.js:1054`；这条拒绝路径**没有断言**，见下面"未验证"） |
 | **`N`** / 「记铅笔」 | 切铅笔模式：这一格上逐个加、逐个删候选，不写数 |
-| **按候选填满铅笔** | 把引擎算出的当前候选域原样写成这格的铅笔标记（它**不计入步数**：`tools/scenarios.js:299`「候选填满本身不计步」） |
+| **按候选填满铅笔** | 把引擎算出的当前候选域原样写成这格的铅笔标记（它**不计入步数**：`tools/scenarios.js:302`「候选填满本身不计步」） |
 | **`H`** / 「提示」 | 说出**当前推得出的一格**和它依据哪条规则；这一步**不替你落子**，只把候选收敛，并按求助计一次 |
-| **`Z`** / 「撤销」 | 退掉上一步——写数字、铅笔、擦格各算一步（`tools/scenarios.js:262`、`302`），能一路退到空盘（`tools/scenarios.js:421`「撤销能退回空盘」） |
+| **`Z`** / 「撤销」 | 退掉上一步——写数字、铅笔、擦格各算一步（`tools/scenarios.js:265`、`305`），能一路退到空盘（`tools/scenarios.js:424`「撤销能退回空盘」） |
 | **`C`** / 「检查这一局」 | 只给判定，不给答案：哪条 run 撞破了、还剩几格空着 |
 | **`⌫`** / 「擦这格」 | 清空这一格的墨与铅笔 |
 | 「铅笔 显/藏」、「音效 开/关」 | 界面读数与合成音开关，设置一起进存档 |
@@ -120,7 +120,7 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
   `sanitize*` / `rleEncode` / `createStore` 却没用），存档形状的实测出处全部在浏览器
   `dirty-a / dirty-b / dirty-c` 与 `play / resume-*` 场景里；
   ② `legalPlace` 的**拒绝路径**同样没被断言——`conflict` 场景只把它当搜索工具用
-  （`tools/scenarios.js:382` 拿它挑"合法但救不回来"的格子），没断言它拒的是什么。
+  （`tools/scenarios.js:385` 拿它挑"合法但救不回来"的格子），没断言它拒的是什么。
   所以上面操作表里"拒绝落子并点名哪条 run"那句是**读代码得来的**（`js/ui/game.js:200-209` +
   `js/engine/kakuro.js:1050-1100`），不是实测。
 
@@ -167,7 +167,7 @@ npm test             # 引擎断言 144 通过 / 0 失败，分节 A–H（每�
 npm run bake         # 构建期烘 25 局进 js/data/levels.js（连答案 ink 与每一局的读数）
 npm run bake -- --check   # 复验：✓ 25 局复验一致；五档各「超预算 0 局」，穷举节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance # 难度尺：对账 405 格 0 处不一致、五档中位数递增、各档超预算 0/N，不成立就 exit 1
-npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0 失败（HTTP 5316、CDP 9366）
+npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0 失败（HTTP 5316、CDP 9366）
 ```
 
 - `npm test` 的八节：A 组合数学（405 个合式 `(L,S)` 的 DP 表与穷举逐格相等）｜B 哨兵值｜
@@ -177,12 +177,17 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0
   dirty-a dirty-b dirty-c touch geom`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
   墨色数字像素、触摸目标 ≥44px、5×5 与 10×10 的几何对拍），不读内部标志位。
   `verify.sh` 有 pre-flight：先 `curl` 首页、`grep 加算十字`，证明 5316 上服务的是本作。
-- 这套闸在**两种 URL 形态**下各跑过一遍，都是 14 场景 230 条 0 失败（2026-09-27 实测）：
-  `npm run verify`（`http://127.0.0.1:5316/`，根形态）与
-  `BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify`
-  ——后者就是生产的 `/z-biz-game-kakuro-cos/` 前缀形态（真 CDN 上跑）。页面里全是相对引用，
-  所以前缀形态不需要改代码，但**需要跑过**：只在根形态下绿过的闸，证不到上线后的那个地址。
-  本地没有起带前缀的服务（`server.cjs` 不挂前缀路径），所以这一形态目前只能靠已部署站点复验。
+- 这套闸在**三种形态**下各自跑过，都是 14 场景 231 条 0 失败（2026-09-28 本机实测）：
+  ① 根形态 `npm run verify`（`http://127.0.0.1:5316/`，`server.cjs` 把仓库当文档根）；
+  ② Pages 的 `/<repo>/` 前缀形态——把仓库软链进一个父目录、用 `python3 -m http.server` 服务那个
+  父目录，`BASE_URL=http://127.0.0.1:<port>/z-biz-game-kakuro-cos/`（CI 的 browser job 就是这么起的，
+  本地起得来，不再只能靠线上复验）；
+  ③ 在 ② 上再换 runner 那种**经典 15px 滚动条**：`CHROME_EXTRA_FLAGS=--disable-features=OverlayScrollbar,OverlayScrollbars,FlushOverlayScrollbars`。
+  前缀形态不是凑对称：根形态的服务器分不出"斜杠开头的 import"和"相对 import"，同组织的 ulam
+  就在 Pages 前缀下丢过一整段根本没跑的断言、本机却全绿。形态③换的是**平台形状**：本机默认是
+  不占位的 overlay 滚动条，runner 上滚动条要从同一列里拿走 15px，只有 ③ 才会暴露"宽度由高度
+  决定"那一类布局。已部署站点另算一条口径（`BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify`），
+  每次上线之后复跑，数字记在本节末。
 - **可选诊断**：`REDUNDANT=1 npm run bake -- --check` 或 `REDUNDANT=1 npm run balance` 会逐局打
   "可省线索 X/Y 条"。它**只打数、不 fail**，理由写在 `tools/balance.mjs:232-236`：
   可省不是违规（"线索最小"从来不是承诺），真正会 fail 的只有 `unproven`——那是"这次测量没做完"，
@@ -209,12 +214,16 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 230 条断言 / 0
   铅笔走"每格 2 字节小端 + RLE"；读进来每个字段都过 `sanitize*`，脏数据吞得下、
   `localStorage` 整个儿抛异常（隐私模式）也照样能玩；`reset` 内存与磁盘两边都清。
 - 规模：13 个运行时 ES Module + 6 个验证脚本，**运行时依赖 0 个**；
-  引擎测试 144 条断言、浏览器断言 230 条，均为实测（出处见上）。
+  引擎测试 144 条断言、浏览器断言 231 条，均为实测（出处见上）。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
-  线上产物已核：2026-09-28 把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
+  线上产物按这一条核对：把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
+  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `12a1b03` 那一次的结果记在下面
+  （它比"最新"更结实：每次上线都换一个新的观测值，只有锚定的那次能说它当时是多少）——
   15 个相同、0 个不一致；同一天的三形态实跑（本机 root 230/0、本机 Pages 前缀 230/0、
   `BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify` 230/0）都是 exit 0。
+  那三遍跑的是 `12a1b03` 的 230 条；胜利卡那条断言改成"入场落定之后再量"（231 条）之后，
+  线上口径另跑一遍并记在同一处。
 
 ---
 

@@ -60,7 +60,7 @@ jobs:
 
   # The dirty-a/b/c and resume-* scenarios are the only thing that ever touches a real
   # localStorage, so before this job the promise "hand-edged save files are swallowed" was held
-  # by 230 assertions that ran exclusively on the machine that wrote them. `check` going green
+  # by 231 assertions that ran exclusively on the machine that wrote them. `check` going green
   # said nothing about the page — and the comment on the engine step used to say so out loud.
   browser:
     name: real browser gate (both URL shapes)

@@ -1,7 +1,7 @@
 # 设计说明 · 加算十字 Kakuro
 
 这份文件讲"为什么这样写"。要跑起来请看 `README.md`；要看断言请看 `tools/engine-test.mjs`
-（144 条，A–H 八节）与 `tools/scenarios.js`（14 个场景 / 230 条浏览器断言）——
+（144 条，A–H 八节）与 `tools/scenarios.js`（14 个场景 / 231 条浏览器断言）——
 **这个项目里的每一句承诺，都对应一条会红的断言或一个实测数字。**
 
 代码里有五处注释按小节号指回这份文档，编号就是它们的地址：
@@ -247,6 +247,24 @@ G5 要求 25 局铅笔的解过 `verify()` 零问题（619 条 run 的和被独�
 阶梯门禁（中位数严格递增）就失去意义。D9/D11 用独立重跑 `solve(board,{regions:false})`
 盯住这件事，不看生成器自己的读数。
 
+**同一条纪律也管闸自己的读数**。2026-09-28 CI 的 browser job 红过一次，`win` 场景交回
+`{"w":72.40625,"h":43.999969482421875}`：这只盒的地板是 `min-height: 44px`，实测却矮
+0.000030517578125 = 2^-15 px，也不在 1/64（Blink 的 LayoutUnit）网格上——**布局交不回这个数**，
+它是飞行中的矩形被映射之后的瞬时读数。胜利卡的 `#win-veil` 带一条 180ms 的 `rise`
+（`translateY(6px)→none`，`animation-fill-mode: both`），而闸是在 `rise` 还在 `running` 的时刻
+按下的 `getBoundingClientRect`（本机同一时刻的读数是 `flightAnims: ['rise:running:33']`）。
+本机两个方向都复现不出来：把祖先平移 3072 个分数步长（`i/64` 与 `i/512`，跨过 y=512 这条
+float32 间距翻倍的线也试过）逐点回读，再逐帧采 60 帧（帧里的 `translateY` 确实是 5.49868
+这种非二进制值，顶边也确实落在 1/32768 的网格上），`height` 每次都是 44.000000000000——
+上下两条边同移一格，差不变。所以修法不是给门槛加容差（那等于把承诺作废），是**改量哪一刻**：
+等 veil 到根这条链上所有 `playState === 'running'` 的动画清空再量，上限 120 帧，`>= 44`
+一个像素不动。等落定用 rAF 数帧而不是 `setTimeout`：runner 上动画的墙上时钟比本机慢（同一轮它
+交回 `rise:running` 的时刻已是判胜之后 0.6s），按时间等就是再赌一次同一个坑。落定本身另有一条
+见证断言（`win` 29→30 条、总数 230→231 条）：以后有动画落不下来，闸会红得有名有姓，而不是
+退化成"又量了一次会飘的盒"。读数一并交回 `flightAnims` / `settleTicks` / `midFlightBox` /
+`laidOut`（布局高度 `getComputedStyle(btn).height`）：本机三形态都是 `settleTicks: 9`、
+`againBox [98, 44]` 对 `laidOut: '44px'`。
+
 ---
 
 ## 复现这些数字
@@ -256,10 +274,11 @@ npm run check                  # 逐文件 node --check + 入口断言 → OK
 npm test                       # 144 条引擎断言（A–H 八节，每节打实测数字）
 npm run bake -- --check        # ✓ 25 局复验一致；五档各「超预算 0 局」，节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance     # 对账 405 格 0 处不一致；中位数阶梯；各档超预算 0/N → exit 0
-npm run verify                 # 本机 headless Chrome：14 个场景 / 230 条断言 / 0 失败（5316 / 9366）
+npm run verify                 # 本机 headless Chrome：14 个场景 / 231 条断言 / 0 失败（5316 / 9366）
                                # CI 的 browser job 把这一套跑两遍（root 与 Pages 的 /<repo>/ 前缀）；
-                               # 2026-09-28 三形态各自实测：本机 root 230/0、本机前缀 230/0、
-                               # BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ 230/0
+                               # 2026-09-28 本机三形态各自实测：root 231/0、Pages 前缀 231/0、
+                               # Pages 前缀 + 经典 15px 滚动条（runner 的形态，CHROME_EXTRA_FLAGS 见
+                               # tools/verify.sh:48-50）231/0；BASE_URL 指向已部署站点的复验单独记录在 README
 ```
 
 `tools/scenarios.js` 的纪律与 `tools/engine-test.mjs` 一致：期望值**手写死**，读 DOM 几何与

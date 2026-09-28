@@ -28,6 +28,9 @@
     return out;
   };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 一条动画的可读快照：名字、状态、已经走了多少毫秒。几何读数要能追溯到"量的那一刻
+  // 页面上还有什么在动"，否则一个会飘的数字交回来只剩猜。
+  const describe = (a) => `${a.animationName || a.transitionProperty || 'anon'}:${a.playState}:${Math.round(a.currentTime || 0)}`;
 
   const KEY = 'kakuro.save.v1';
   const SNAP = '__kakuroScnSnap';
@@ -474,20 +477,37 @@
     eq('纪录提示 0 次', best.hints, 0);
     eq('纪录步数 9', best.moves, 9);
     ck('章节标记包含 c0p0', Array.isArray(raw.chapters['0']) && raw.chapters['0'].includes('c0p0'), JSON.stringify(raw.chapters));
-    const again = $('#btn-again').getBoundingClientRect();
+    const btn = $('#btn-again');
+    // 只收集"会把这只盒的矩形映射带走"的动画：目标在 veil 到根的链上、且还在跑的。
+    const chain = [];
+    for (let n = $('#win-veil'); n; n = n.parentElement) chain.push(n);
+    const flyingAnims = () => document.getAnimations()
+      .filter((a) => a.playState === 'running' && a.effect && chain.includes(a.effect.target));
+    const midFlight = btn.getBoundingClientRect();
+    const atMeasure = flyingAnims().map(describe);
+    // 胜利卡是刚弹出的：#win-veil 与 .view 各带一条 180ms 的 rise（translateY(6px)→none，
+    // animation-fill-mode: both）。闸曾在动画还在飞的时候量这只盒，runner 交回过
+    // 43.999969482421875 —— 比这只盒自己的 min-height: 44px 还矮，也不在 1/64（Blink 的
+    // LayoutUnit）网格上，所以它不是布局值，是飞行中的矩形被映射之后的瞬时读数。本机复现
+    // 不出来：把祖先平移 3072 个分数步长、再逐帧采 60 帧，height 每次都是 44.000000000000。
+    // 要量的是玩家真能点到的那只盒，就等入场落定再量，门槛一个字不改。落定用 rAF 数帧来等，
+    // 不用 setTimeout：runner 上动画的墙上时钟比本机慢（上一轮它交回 rise:running 的时刻已经
+    // 是开局之后 0.6s），按时间等会把同一个坑再赌一次。飞着的动画有几条、等了几帧、这只盒的
+    // 布局高度各是多少都交回，并有"已落定"的见证断言：以后落不下来的动画会让闸红得有名有姓，
+    // 而不是又去量一次会飘的盒。
+    let ticks = 0;
+    while (flyingAnims().length && ticks < 120) {
+      await new Promise((r) => requestAnimationFrame(r));
+      ticks++;
+    }
+    const left = flyingAnims().map(describe);
+    ck('量按钮之前胜利卡的入场动画已经落定（120 帧上限）', left.length === 0, `ticks ${ticks}, still ${JSON.stringify(left)}`);
+    const again = btn.getBoundingClientRect();
     ck('胜利卡的按钮可点', again.width >= 44 && again.height >= 44, JSON.stringify({ w: again.width, h: again.height }));
-    // 一轮定案的探针（下一轮改动之后删掉）：runner 上一轮交回的是
-    // {"w":72.40625,"h":43.999969482421875}——宽是 1/64（Blink 的 LayoutUnit）的整数倍，高不是，
-    // 而 44 - h = 2^-15 正好是合成器定点网格的一格。那个形状只在矩形被变换映射过的时候出现。
-    // 所以把"动画还在"和"动画取消之后"同一只盒各量一次并排交回：如果取消后回到 44 整，
-    // 差值就是 #win-veil / .view 的 animation-fill-mode: both 留下的那层 identity 变换。
-    const anims = $('#win-veil').getAnimations({ subtree: true });
-    const running = anims.map((a) => `${a.animationName || a.transitionProperty}:${a.playState}`);
-    anims.forEach((a) => a.cancel());
-    const cleared = $('#btn-again').getBoundingClientRect();
     return report({
       nodes: c.nodes, moves: game.moves, winMeta: text('#win-meta'),
-      againBox: [again.width, again.height], afterCancel: [cleared.width, cleared.height], veilAnims: running,
+      againBox: [again.width, again.height], laidOut: getComputedStyle(btn).height,
+      midFlightBox: [midFlight.width, midFlight.height], settleTicks: ticks, flightAnims: atMeasure,
     });
   };
 
