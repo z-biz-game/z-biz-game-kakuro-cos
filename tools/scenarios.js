@@ -476,7 +476,19 @@
     ck('章节标记包含 c0p0', Array.isArray(raw.chapters['0']) && raw.chapters['0'].includes('c0p0'), JSON.stringify(raw.chapters));
     const again = $('#btn-again').getBoundingClientRect();
     ck('胜利卡的按钮可点', again.width >= 44 && again.height >= 44, JSON.stringify({ w: again.width, h: again.height }));
-    return report({ nodes: c.nodes, moves: game.moves, winMeta: text('#win-meta') });
+    // 一轮定案的探针（下一轮改动之后删掉）：runner 上一轮交回的是
+    // {"w":72.40625,"h":43.999969482421875}——宽是 1/64（Blink 的 LayoutUnit）的整数倍，高不是，
+    // 而 44 - h = 2^-15 正好是合成器定点网格的一格。那个形状只在矩形被变换映射过的时候出现。
+    // 所以把"动画还在"和"动画取消之后"同一只盒各量一次并排交回：如果取消后回到 44 整，
+    // 差值就是 #win-veil / .view 的 animation-fill-mode: both 留下的那层 identity 变换。
+    const anims = $('#win-veil').getAnimations({ subtree: true });
+    const running = anims.map((a) => `${a.animationName || a.transitionProperty}:${a.playState}`);
+    anims.forEach((a) => a.cancel());
+    const cleared = $('#btn-again').getBoundingClientRect();
+    return report({
+      nodes: c.nodes, moves: game.moves, winMeta: text('#win-meta'),
+      againBox: [again.width, again.height], afterCancel: [cleared.width, cleared.height], veilAnims: running,
+    });
   };
 
   // ---- 场景 6a/6b：刷新不丢档 -----------------------------------------------------------------------

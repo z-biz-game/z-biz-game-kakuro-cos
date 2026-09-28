@@ -45,8 +45,11 @@ case "$SERVED" in *js/main.js*) ;; *) echo "nothing served at $BASE (see /tmp/ka
 echo "$SERVED" | grep -q 加算十字 || { echo "port $HTTP serving a different app (正文里找不到 加算十字)"; exit 2; }
 
 UDD=$(mktemp -d)
+# CHROME_EXTRA_FLAGS is how a lane asks for another platform's behaviour while editing:
+# `--disable-features=OverlayScrollbar,OverlayScrollbars,FlushOverlayScrollbars` on a Mac gives
+# the classic 15px scrollbars the Linux runner has. Unset, this is the plain headless Chrome CI.
 "$CHROME" --headless=new --remote-debugging-port=$PORT --user-data-dir=$UDD \
-  --window-size=1280,1024 --no-first-run --no-default-browser-check about:blank >/tmp/kakuro-chrome.log 2>&1 &
+  ${CHROME_EXTRA_FLAGS:-} --window-size=1280,1024 --no-first-run --no-default-browser-check about:blank >/tmp/kakuro-chrome.log 2>&1 &
 CPID=$!
 cleanup() {
   [ "$SPID" != 0 ] && kill $SPID 2>/dev/null
