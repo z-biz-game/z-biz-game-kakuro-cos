@@ -6,8 +6,28 @@
 <meta name="theme-color" content="#f5f1e8" />
 <title>加算十字 · Kakuro 交叉和推理</title>
 <meta name="description" content="Kakuro 加算十字：黑格里的两个数各管一条 run，右下的数写着它右边那一横串的和、右上的数写着它下边那一竖串的和，同一条 run 里数字不许重复。每局唯一解、每局都能用组合清单与进差法推到底，提示只说推得出的那一步。" />
-<!-- Inline icon: without it the browser probes the Pages domain root for /favicon.ico and logs a 404. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234a4437'/%3E%3Cpath d='M4 4 L28 28' stroke='%23f5f1e8' stroke-opacity='.35' stroke-width='1.6'/%3E%3Cpath d='M17 30 L17 17 L30 17' stroke='%23f5f1e8' stroke-width='2' fill='none'/%3E%3Ctext x='27' y='12.4' font-family='monospace' font-size='9' font-weight='700' text-anchor='end' fill='%23ffe9a8'%3E23%3C/text%3E%3Ctext x='27' y='26.6' font-family='monospace' font-size='9' font-weight='700' text-anchor='end' fill='%23ffffff'%3E16%3C/text%3E%3C/svg%3E" />
+<!-- 图标都是盘上真实 PNG（assets/gen/make_art.py 画的，尺寸/宽高/sha1 记在 assets/gen/manifest.json）。
+     指向真文件而不是内联 data: SVG：后者既装不到桌面，也过不了"边长≥180 的位图"这一关，
+     还会让浏览器去域名根抓一把 /favicon.ico 记成 404。 -->
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
+<link rel="apple-touch-icon" sizes="152x152" href="assets/icons/apple-touch-icon-152.png" />
+<link rel="apple-touch-icon" sizes="167x167" href="assets/icons/apple-touch-icon-167.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="加算十字" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="加算十字 · Kakuro 交叉和推理" />
+<meta property="og:description" content="每局唯一解、每局都能用组合清单与进差法推到底；提示只说推得出的那一步。" />
+<meta property="og:image" content="assets/og/kakuro-og-1200x630.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="assets/og/kakuro-og-1200x630.png" />
 <link rel="stylesheet" href="css/game.css" />
 </head>
 <body>
@@ -157,6 +177,7 @@
   </footer>
 </div>
 
+<script src="js/sw-register.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

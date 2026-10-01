@@ -1,0 +1,20 @@
+{
+  "name": "加算十字 Kakuro · 交叉和推理",
+  "short_name": "加算十字",
+  "description": "Kakuro 加算十字：黑格里的两个数各管一条 run，同一条 run 里数字不许重复。每局唯一解、每局都能用组合清单与进差法推到底，提示只说推得出的那一步。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f1e8",
+  "theme_color": "#f5f1e8",
+  "categories": ["games", "puzzle", "education"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
