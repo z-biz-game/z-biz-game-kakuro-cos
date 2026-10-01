@@ -546,16 +546,29 @@ function resumeSaved() {
 // ---- 输入：画布 -------------------------------------------------------------------------------
 
 function bindCanvas() {
-  el.canvas.addEventListener('pointerdown', (ev) => {
+  // 一次落点只做一件事：选格。坐标必须换算回布局像素 ——
+  // rect.width 是"渲染出来的 CSS 宽"，layout.width 是"排版时算出的宽"，页面缩放/全屏会让两者不等，
+  // 不乘这个比值，手机上就是点 A 打 B（规范 §2 触摸输入）。
+  const pick = (ev) => {
     if (!game || !view.layout) return;
+    const t = ev.touches && ev.touches.length ? ev.touches[0] : ev;
+    if (typeof t.clientX !== 'number') return;
     ev.preventDefault();
     unlockAudio();
     const rect = el.canvas.getBoundingClientRect();
-    const hit = view.hitTest(ev.clientX - rect.left, ev.clientY - rect.top);
+    const sx = rect.width ? view.layout.width / rect.width : 1;
+    const sy = rect.height ? view.layout.height / rect.height : 1;
+    const hit = view.hitTest((t.clientX - rect.left) * sx, (t.clientY - rect.top) * sy);
     if (!hit) return;
     if (game.board.black[hit.grid]) return; // 黑格只是写着和，不是能填的格子
     game.selectGrid(hit.grid);
-  });
+  };
+  if (typeof window !== 'undefined' && 'PointerEvent' in window) {
+    el.canvas.addEventListener('pointerdown', pick); // 有 Pointer Events 就只走这一条，避免一次触摸被算两遍
+  } else {
+    el.canvas.addEventListener('touchstart', pick, { passive: false });
+    el.canvas.addEventListener('mousedown', pick);
+  }
   el.canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 }
 
