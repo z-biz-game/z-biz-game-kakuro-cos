@@ -1,0 +1,210 @@
+{
+ "files": [
+  {
+   "bytes": 95534,
+   "file": "assets/icons/icon-1024.png",
+   "h": 1024,
+   "sha1": "6d7cb15c8615",
+   "w": 1024
+  },
+  {
+   "bytes": 103082,
+   "file": "assets/icons/icon-1024-flat.png",
+   "h": 1024,
+   "sha1": "5c48c4389b2c",
+   "w": 1024
+  },
+  {
+   "bytes": 67970,
+   "file": "assets/icons/icon-512.png",
+   "h": 512,
+   "sha1": "e48fa773a1d5",
+   "w": 512
+  },
+  {
+   "bytes": 20252,
+   "file": "assets/icons/icon-192.png",
+   "h": 192,
+   "sha1": "2f47bfd0bf69",
+   "w": 192
+  },
+  {
+   "bytes": 8896,
+   "file": "assets/icons/icon-96.png",
+   "h": 96,
+   "sha1": "778a54942733",
+   "w": 96
+  },
+  {
+   "bytes": 4978,
+   "file": "assets/icons/icon-64.png",
+   "h": 64,
+   "sha1": "c75b3897e41b",
+   "w": 64
+  },
+  {
+   "bytes": 3410,
+   "file": "assets/icons/icon-48.png",
+   "h": 48,
+   "sha1": "1b588e13bd48",
+   "w": 48
+  },
+  {
+   "bytes": 1941,
+   "file": "assets/icons/icon-32.png",
+   "h": 32,
+   "sha1": "75fe03391454",
+   "w": 32
+  },
+  {
+   "bytes": 744,
+   "file": "assets/icons/icon-16.png",
+   "h": 16,
+   "sha1": "58794f1530d8",
+   "w": 16
+  },
+  {
+   "bytes": 63788,
+   "file": "assets/icons/maskable-512.png",
+   "h": 512,
+   "sha1": "662df4cfb759",
+   "w": 512
+  },
+  {
+   "bytes": 17507,
+   "file": "assets/icons/apple-touch-icon-180.png",
+   "h": 180,
+   "sha1": "f297b2778882",
+   "w": 180
+  },
+  {
+   "bytes": 16395,
+   "file": "assets/icons/apple-touch-icon-167.png",
+   "h": 167,
+   "sha1": "c5a1cab77cd4",
+   "w": 167
+  },
+  {
+   "bytes": 14569,
+   "file": "assets/icons/apple-touch-icon-152.png",
+   "h": 152,
+   "sha1": "721290210278",
+   "w": 152
+  },
+  {
+   "bytes": 10538,
+   "file": "assets/icons/apple-touch-icon-120.png",
+   "h": 120,
+   "sha1": "3e874564d1a5",
+   "w": 120
+  },
+  {
+   "bytes": 20252,
+   "file": "assets/icons/favicon-192.png",
+   "h": 192,
+   "sha1": "2f47bfd0bf69",
+   "w": 192
+  },
+  {
+   "bytes": 1941,
+   "file": "assets/icons/favicon-32.png",
+   "h": 32,
+   "sha1": "75fe03391454",
+   "w": 32
+  },
+  {
+   "bytes": 3410,
+   "file": "assets/icons/favicon-48.png",
+   "h": 48,
+   "sha1": "1b588e13bd48",
+   "w": 48
+  },
+  {
+   "bytes": 744,
+   "file": "assets/icons/favicon-16.png",
+   "h": 16,
+   "sha1": "58794f1530d8",
+   "w": 16
+  },
+  {
+   "bytes": 17507,
+   "file": "assets/icons/apple-touch-icon.png",
+   "h": 180,
+   "sha1": "f297b2778882",
+   "w": 180
+  },
+  {
+   "bytes": 20917,
+   "file": "assets/textures/paper-256.png",
+   "h": 256,
+   "sha1": "036ffac719a0",
+   "w": 256
+  },
+  {
+   "bytes": 33508,
+   "file": "assets/textures/solved-stamp-256.png",
+   "h": 302,
+   "sha1": "e529a212c277",
+   "w": 302
+  },
+  {
+   "bytes": 250,
+   "file": "assets/ui/sound-on-48.png",
+   "h": 48,
+   "sha1": "28a0e2d076b4",
+   "w": 48
+  },
+  {
+   "bytes": 246,
+   "file": "assets/ui/sound-off-48.png",
+   "h": 48,
+   "sha1": "e0969adb82b7",
+   "w": 48
+  },
+  {
+   "bytes": 151,
+   "file": "assets/ui/pause-48.png",
+   "h": 48,
+   "sha1": "d795caacf4dc",
+   "w": 48
+  },
+  {
+   "bytes": 248,
+   "file": "assets/ui/play-48.png",
+   "h": 48,
+   "sha1": "69b42e277f6f",
+   "w": 48
+  },
+  {
+   "bytes": 169,
+   "file": "assets/ui/fullscreen-48.png",
+   "h": 48,
+   "sha1": "f562eed91c4b",
+   "w": 48
+  },
+  {
+   "bytes": 255,
+   "file": "assets/ui/pencil-48.png",
+   "h": 48,
+   "sha1": "37d32c5aab1e",
+   "w": 48
+  },
+  {
+   "bytes": 384,
+   "file": "assets/ui/hint-48.png",
+   "h": 48,
+   "sha1": "d3d25abfbbeb",
+   "w": 48
+  },
+  {
+   "bytes": 147486,
+   "file": "assets/og/kakuro-og-1200x630.png",
+   "h": 630,
+   "sha1": "10eb68f626e6",
+   "w": 1200
+  }
+ ],
+ "generator": "assets/gen/make_art.py",
+ "palette_ref": "css/game.css :root",
+ "seed": 20260928
+}
