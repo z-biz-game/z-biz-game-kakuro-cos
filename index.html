@@ -38,8 +38,8 @@
       <p class="sub">Kakuro · Cross Sum</p>
     </div>
     <div class="top-actions">
-      <button id="btn-sound" class="ghost" type="button" aria-pressed="true">音效 开</button>
-      <button id="btn-notes" class="ghost" type="button" aria-pressed="false">铅笔 显</button>
+      <button id="btn-sound" class="ghost icon-btn" type="button" aria-pressed="true"><i class="ico ico-sound"></i><span class="lbl">音效 开</span></button>
+      <button id="btn-notes" class="ghost icon-btn" type="button" aria-pressed="false"><i class="ico ico-pencil"></i><span class="lbl">铅笔 显</span></button>
     </div>
   </header>
 
@@ -102,9 +102,23 @@
           <span id="stat-tier" class="chip">—</span>
           <span id="stat-size" class="chip mono">—</span>
           <span id="stat-time" class="chip mono">00:00</span>
+          <span class="head-spacer"></span>
+          <button id="btn-pause" class="ghost icon-btn" type="button" aria-pressed="false"><i class="ico ico-pause"></i><span class="lbl">暂停</span></button>
+          <button id="btn-restart" class="ghost icon-btn" type="button"><i class="ico ico-replay"></i><span class="lbl">重开这局</span></button>
+          <button id="btn-fullscreen" class="ghost icon-btn" type="button" aria-pressed="false"><i class="ico ico-fullscreen"></i><span class="lbl">全屏</span></button>
         </div>
         <div id="board-wrap">
           <canvas id="board" data-touch="0" role="img" aria-label="加算十字棋盘：点白格选中，再按数字落子"></canvas>
+          <div id="pause-veil" hidden>
+            <div class="pause-card">
+              <h3><i class="ico ico-pause"></i>已暂停</h3>
+              <p id="pause-meta">计时已停：暂停期间一秒都不记。</p>
+              <div class="win-actions">
+                <button id="btn-resume-play" class="primary icon-btn" type="button"><i class="ico ico-play"></i><span class="lbl">继续</span></button>
+                <button id="btn-menu-3" class="ghost" type="button">回章节</button>
+              </div>
+            </div>
+          </div>
           <div id="win-veil" hidden>
             <div class="win-card">
               <h3>每条 run 的和都对上了</h3>
@@ -166,7 +180,7 @@
           <span><i class="sw sw-hint"></i>提示点名的格</span>
           <span><i class="sw sw-bad"></i>撞破和/重复</span>
         </div>
-        <p class="keyhint"><b>1..9</b> 落子 · <b>N</b> 切铅笔 · <b>⌫</b> 擦这格 · <b>方向键</b> 移动选中 · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>C</b> 检查</p>
+        <p class="keyhint"><b>1..9</b> 落子 · <b>N</b> 切铅笔 · <b>⌫</b> 擦这格 · <b>方向键</b> 移动选中 · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>C</b> 检查 · <b>P</b>/<b>空格</b> 暂停 · <b>R</b> 重开这局 · <b>M</b> 静音 · <b>F</b> 全屏 · <b>?</b> 回章节看六条规则</p>
       </aside>
     </section>
   </main>

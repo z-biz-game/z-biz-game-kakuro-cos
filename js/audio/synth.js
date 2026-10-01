@@ -25,10 +25,10 @@ function ensure() {
   if (!ctx) {
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.9;
+    master.gain.value = muted ? 0 : 0.9;
     master.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (!muted && ctx.state === 'suspended') ctx.resume().catch(() => {});
   return ctx;
 }
 
@@ -36,9 +36,16 @@ export function unlockAudio() {
   ensure();
 }
 
+/** 静音 = 挂起整个 AudioContext，不是把 gain 拧到 0。
+ *  两条都得成立：① 上下文真的停下来（suspend），② 静音态不再新建振荡器（play 第一行就返回）。
+ *  只改 gain 的话，节点还在图里跑，频谱分析能照原样量出声音——那是假静音。 */
 export function setMuted(next) {
   muted = !!next;
   if (master) master.gain.value = muted ? 0 : 0.9;
+  if (ctx) {
+    if (muted) ctx.suspend().catch(() => {});
+    else ctx.resume().catch(() => {});
+  }
   return muted;
 }
 
@@ -46,10 +53,24 @@ export function isMuted() {
   return muted;
 }
 
+/** 暂停用：把上下文挂起。恢复只在未静音时进行，否则会把静音玩家的音频又叫醒。 */
+export function suspendContext() {
+  if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+}
+
+export function resumeContext() {
+  if (ctx && !muted && ctx.state === 'suspended') ctx.resume().catch(() => {});
+}
+
+export function contextState() {
+  return ctx ? ctx.state : 'none';
+}
+
 /** 一次两音滑音。kind 决定波形/时长/音量，见上面的 NOTES 表。 */
 export function play(kind = 'tap', { detune = 0, when = 0 } = {}) {
+  if (muted) return; // 静音态一个节点都不建
   const ac = ensure();
-  if (!ac || muted) return;
+  if (!ac) return;
   const spec = NOTES[kind] || NOTES.tap;
   const t0 = ac.currentTime + when;
   const osc = ac.createOscillator();

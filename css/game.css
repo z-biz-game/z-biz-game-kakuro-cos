@@ -46,13 +46,24 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.1);
   --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.2);
   --shadow-3: 0 16px 36px rgba(0, 0, 0, 0.3);
+
+  /* 刘海/Home 条：index.html 的 viewport 带 viewport-fit=cover，所以内容必须自己让开这几条边。
+     只在这里读 env()，业务规则一律引用变量；0px 是后备（桌面、不支持 env 的引擎会把它解析成空）。 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 html, body {
   margin: 0;
   min-height: 100%;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 62%, var(--surface-sunk) 100%);
-  background-attachment: fixed;
+  /* 两层：上面是 256px 无缝纸纹（assets/gen/make_art.py 生成，alpha 极低，只破掉纯色的塑料感），
+     下面仍是那道纵向渐变，用 fixed 让整页只走一遍而不是每屏重来一次。 */
+  background:
+    url("../assets/textures/paper-256.png") 0 0 / 256px 256px repeat,
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 62%, var(--surface-sunk) 100%);
+  background-attachment: scroll, fixed;
   color: var(--ink);
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
@@ -63,7 +74,13 @@ body { touch-action: manipulation; }
 #app {
   max-width: 1180px;
   margin: 0 auto;
-  padding: var(--space-panel, 20px) var(--space-panel, 20px) var(--space-block, 16px);
+  /* 四边都让开安全区：顶栏躲刘海、左右躲横屏圆角、底部的数字键盘躲 Home 条。
+     基值仍是刻度里的 20/20/16，桌面浏览器上 env() 为空 ⇒ 和改动前逐像素相同。 */
+  padding:
+    calc(var(--space-panel, 20px) + var(--safe-top))
+    calc(var(--space-panel, 20px) + var(--safe-right))
+    calc(var(--space-block, 16px) + var(--safe-bottom))
+    calc(var(--space-panel, 20px) + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: var(--space-panel, 20px);
@@ -96,6 +113,40 @@ body { touch-action: manipulation; }
 }
 
 .top-actions { display: flex; gap: var(--space-item, 12px); }
+
+/* HUD 按钮：位图只当蒙版用（mask-image），填充色走 currentColor ⇒ 颜色依然只在这张表里出现，
+   assets/ui/*.png 只提供形状（由 assets/gen/make_art.py 生成，48px 见方、四周留白）。
+   文案单独放在 .lbl 里，所以 JS 改文案（音效 开/关、暂停/继续、全屏/退出全屏）不会把图标层冲掉。 */
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+
+.ico {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  opacity: 0.82;
+}
+
+.ico-sound     { -webkit-mask-image: url("../assets/ui/sound-on-48.png"); mask-image: url("../assets/ui/sound-on-48.png"); }
+.ico-pencil    { -webkit-mask-image: url("../assets/ui/pencil-48.png");    mask-image: url("../assets/ui/pencil-48.png"); }
+.ico-pause     { -webkit-mask-image: url("../assets/ui/pause-48.png");     mask-image: url("../assets/ui/pause-48.png"); }
+.ico-replay    { -webkit-mask-image: url("../assets/ui/replay-48.png");    mask-image: url("../assets/ui/replay-48.png"); }
+.ico-fullscreen { -webkit-mask-image: url("../assets/ui/fullscreen-48.png"); mask-image: url("../assets/ui/fullscreen-48.png"); }
+.ico-play      { -webkit-mask-image: url("../assets/ui/play-48.png");      mask-image: url("../assets/ui/play-48.png"); }
+
+/* 状态换了就得换形状，不是只换字：静音是另一枚带叉的喇叭，暂停中那枚按钮必须是播放三角 */
+#btn-sound[data-muted="1"] .ico-sound { -webkit-mask-image: url("../assets/ui/sound-off-48.png"); mask-image: url("../assets/ui/sound-off-48.png"); }
+#btn-pause.is-paused .ico-pause { -webkit-mask-image: url("../assets/ui/play-48.png"); mask-image: url("../assets/ui/play-48.png"); }
+.pause-card h3 .ico { width: 17px; height: 17px; margin-right: 5px; vertical-align: -2px; }
+
+.head-spacer { flex: 1 1 auto; }
 
 button {
   font: inherit;
@@ -159,10 +210,12 @@ main { flex: 1; }
 
 body.reduce-motion .view,
 body.reduce-motion button,
-body.reduce-motion .pad-key { animation: none !important; transition: none !important; }
+body.reduce-motion .pad-key,
+body.reduce-motion #win-veil,
+body.reduce-motion #pause-veil { animation: none !important; transition: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .view, button, .pad-key { animation: none !important; transition: none !important; }
+  .view, button, .pad-key, #win-veil, #pause-veil { animation: none !important; transition: none !important; }
 }
 
 /* ---------- 章节页 ---------- */
@@ -354,7 +407,9 @@ body.reduce-motion .pad-key { animation: none !important; transition: none !impo
 .conflict-line.good { color: var(--success); }
 .conflict-line.note { color: var(--dim); }
 
-#win-veil {
+/* 两层遮罩都只盖在棋盘上（#board-wrap 已是 relative），不糊掉整个页面：
+   胜利遮罩让人看清盘面，暂停遮罩还要让盘面明显不可下手。 */
+#win-veil, #pause-veil {
   position: absolute;
   inset: 0;
   display: grid;
@@ -364,7 +419,9 @@ body.reduce-motion .pad-key { animation: none !important; transition: none !impo
   animation: rise var(--dur-tap, 180ms) var(--ease, ease) both;
 }
 
-.win-card {
+#pause-veil { background: rgba(18, 22, 29, 0.44); }
+
+.win-card, .pause-card {
   text-align: center;
   padding: var(--space-panel, 20px);
   border: 1px solid var(--accent);
@@ -373,6 +430,24 @@ body.reduce-motion .pad-key { animation: none !important; transition: none !impo
   box-shadow: var(--shadow-3);
   max-width: 86%;
 }
+
+.win-card { position: relative; }
+
+/* 结算章：盖在卡片右上角，只有一层墨，随遮罩出现/消失，不参与布局 */
+.win-card::after {
+  content: "";
+  position: absolute;
+  right: -14px;
+  top: -20px;
+  width: 64px;
+  height: 64px;
+  background: url("../assets/textures/solved-stamp-256.png") center / contain no-repeat;
+  pointer-events: none;
+}
+
+.pause-card { border-color: var(--line-heavy); }
+.pause-card h3 { margin: 0 0 6px; font-size: 19px; display: flex; align-items: center; justify-content: center; }
+.pause-card p { margin: 0 0 12px; font-size: 13px; color: var(--dim); line-height: 1.6; }
 
 .win-card h3 { margin: 0 0 6px; font-size: 19px; }
 .win-card p { margin: 0 0 8px; font-size: 13px; color: var(--dim); line-height: 1.6; }
@@ -502,3 +577,20 @@ body.reduce-motion .pad-key { animation: none !important; transition: none !impo
   .foot { flex-direction: column; align-items: flex-start; }
   .stage { padding: var(--space-block, 16px); }
 }
+
+/* ---------- 全屏 ---------- */
+
+/* 被送进 Fullscreen API 的是 <html>：它必须继续持有那套纸面，
+   否则浏览器给一层黑底，页面像被抠空只剩中间一块。 */
+:fullscreen,
+:-webkit-full-screen {
+  background:
+    url("../assets/textures/paper-256.png") 0 0 / 256px 256px repeat,
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 62%, var(--surface-sunk) 100%);
+  background-attachment: scroll, fixed;
+}
+
+/* 全屏的意义是把多出来的宽度交给棋盘，所以 1180px 的居中上限在这时取消；
+   body.is-fullscreen 由 js/main.js 的 syncFullscreen() 跟着 fullscreenchange 打/摘。 */
+body.is-fullscreen #app { max-width: none; }
+body.is-fullscreen .foot { display: none; }

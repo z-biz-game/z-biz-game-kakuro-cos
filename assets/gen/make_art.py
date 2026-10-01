@@ -312,6 +312,11 @@ def ui_glyph(kind, side=48):
             d.rounded_rectangle([cx - side * 0.09, m, cx + side * 0.09, side - m], radius=side * 0.05, fill=255)
     elif kind == 'play':
         d.polygon([(side * 0.28, m), (side * 0.28, side - m), (side * 0.82, side * 0.5)], fill=255)
+    elif kind == 'replay':
+        rr = side * 0.3
+        d.arc([side * 0.5 - rr, side * 0.5 - rr, side * 0.5 + rr, side * 0.5 + rr], -55, 205, fill=255, width=w)
+        ax, ay = side * 0.5 + rr * math.cos(math.radians(-55)), side * 0.5 + rr * math.sin(math.radians(-55))
+        d.polygon([(ax, ay), (ax - side * 0.2, ay - side * 0.05), (ax - side * 0.05, ay + side * 0.17)], fill=255)
     elif kind == 'fullscreen':
         L = side * 0.3
         for (x, y, sx, sy) in ((m, m, 1, 1), (side - m, m, -1, 1), (m, side - m, 1, -1), (side - m, side - m, -1, -1)):
@@ -505,7 +510,7 @@ def main():
     stamp.save(p, optimize=True)
     files.append(p)
 
-    for g in ('sound-on', 'sound-off', 'pause', 'play', 'fullscreen', 'pencil', 'hint'):
+    for g in ('sound-on', 'sound-off', 'pause', 'play', 'replay', 'fullscreen', 'pencil', 'hint'):
         p = os.path.join(OUT_ROOT, 'ui', f'{g}-48.png')
         ui_glyph(g, 48).save(p, optimize=True)
         files.append(p)

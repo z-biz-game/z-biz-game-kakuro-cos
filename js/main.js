@@ -9,7 +9,7 @@
 // 于是"把触摸目标改成 44"这种事只有一处可改，改两处就会分裂。
 
 import { Cell, Motion, Radius, Space, applyThemeVars } from './theme.js';
-import { isMuted, play, setMuted, unlockAudio } from './audio/synth.js';
+import { isMuted, play, setMuted, unlockAudio, suspendContext, resumeContext, contextState } from './audio/synth.js';
 import { createStore, encodeNotes, rleDecode, rleEncode, decodeNotes } from './store.js';
 import { TIERS, tierFor } from './engine/generate.js';
 import * as Engine from './engine/kakuro.js';
@@ -71,6 +71,12 @@ const el = {
   modeNote: $('#btn-mode-note'),
   notesBtn: $('#btn-notes'),
   soundBtn: $('#btn-sound'),
+  pauseBtn: $('#btn-pause'),
+  restartBtn: $('#btn-restart'),
+  fsBtn: $('#btn-fullscreen'),
+  pauseVeil: $('#pause-veil'),
+  pauseMeta: $('#pause-meta'),
+  resumePlayBtn: $('#btn-resume-play'),
 };
 
 const store = createStore();
@@ -81,8 +87,42 @@ let game = null;
 let view = null;
 let ticker = 0;
 let pulseUntil = 0;
+let markTimer = 0;
 let raf = 0;
 let lastKind = 'tap';
+
+// 重绘上限，不是时间源：高亮什么时候结束只由 flash.until / hintMark.until 两个 deadline 决定，
+// 这里只是不把 120Hz 的帧全拿去重画一遍。所以 30/60/120Hz 下"哪一帧起标记消失"的墙钟时刻一致。
+const REPAINT_MIN_MS = 16;
+
+// ---- reduce-motion：动效退化成静图，不是"看起来差不多" ------------------------------------------------
+//
+// 画布这边本来就没有逐帧插值（flash/hintMark 只按 deadline 决定画不画），所以 rAF 那条
+// schedulePulse 循环唯一的用途就是"到点把高亮摘掉"。玩家要静的时候，这条循环整个不发，
+// 摘高亮改交一次性 timeout —— 那是计时器不是动效。
+const reduceQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+let reduceMotion = !!(reduceQuery && reduceQuery.matches);
+
+function applyReduceMotion() {
+  document.body.classList.toggle('reduce-motion', reduceMotion);
+  if (reduceMotion) {
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+    pulseUntil = 0;
+  }
+  paint();
+}
+
+if (reduceQuery) {
+  const onChange = () => {
+    reduceMotion = !!reduceQuery.matches;
+    applyReduceMotion();
+  };
+  if (typeof reduceQuery.addEventListener === 'function') reduceQuery.addEventListener('change', onChange);
+  else if (typeof reduceQuery.addListener === 'function') reduceQuery.addListener(onChange);
+}
 
 // ---- 主题：把 js/theme.js 的刻度写给 CSS 用 ---------------------------------------------------
 
@@ -151,15 +191,29 @@ function paint() {
 /** 提示高亮与被拒的 run 都要淡出：只在这些标记活着的时候继续要帧。 */
 function schedulePulse() {
   const now = Date.now();
-  const live = (game && game.flash && game.flash.until > now) || (game && game.hintMark && game.hintMark.until > now);
+  if (game && game.paused) {
+    pulseUntil = 0;
+    return;
+  }
+  const deadlines = [game && game.flash && game.flash.until, game && game.hintMark && game.hintMark.until].filter(Boolean);
+  const live = deadlines.some((until) => until > now);
   if (!live) {
     pulseUntil = 0;
+    return;
+  }
+  if (reduceMotion) {
+    // 静模式：一个 rAF 都不发，到点摘掉高亮就够了
+    clearTimeout(markTimer);
+    markTimer = setTimeout(() => {
+      markTimer = 0;
+      paint();
+    }, Math.max(0, Math.max(...deadlines) - now));
     return;
   }
   if (raf) return;
   raf = requestAnimationFrame(() => {
     raf = 0;
-    if (Date.now() < pulseUntil + 16) return;
+    if (Date.now() < pulseUntil + REPAINT_MIN_MS) return;
     pulseUntil = Date.now();
     if (view) view.draw(pulseUntil);
     schedulePulse();
@@ -222,6 +276,7 @@ function fmtMs(ms) {
 
 function syncAll() {
   syncStats();
+  syncPause();
   relayout();
   paint();
 }
@@ -538,6 +593,116 @@ function undo() {
   return game.undo();
 }
 
+// ---- 文案与图标分开写：改文案不会把 .ico 那层蒙版冲掉 ---------------------------------------------
+
+function setLabel(btn, txt) {
+  if (!btn) return;
+  const lbl = btn.querySelector('.lbl');
+  if (lbl) lbl.textContent = txt;
+  else btn.textContent = txt;
+}
+
+// ---- 暂停：计时器停下、盘面拒绝改动、音频挂起 --------------------------------------------------------
+
+function syncPause() {
+  const paused = !!(game && game.paused);
+  el.pauseVeil.hidden = !paused;
+  setLabel(el.pauseBtn, paused ? '继续' : '暂停');
+  el.pauseBtn.setAttribute('aria-pressed', String(paused));
+  el.pauseBtn.classList.toggle('is-paused', paused);
+  if (paused) el.pauseMeta.textContent = `计时已停：已累计 ${fmtMs(game.elapsedMs)}，恢复后从这一秒接着走。`;
+  return paused;
+}
+
+function togglePause(force) {
+  if (!game || !game.board) return null;
+  const want = force === undefined ? !game.paused : !!force;
+  const r = want ? game.pause() : game.resume();
+  if (!r.ok) return r;
+  if (want) suspendContext();
+  else resumeContext();
+  syncPause();
+  paint();
+  return r;
+}
+
+// ---- 重开这一局：时钟/历史/计数/铅笔/高亮全部复位，题目不换 -------------------------------------------
+
+function restartPuzzle() {
+  if (!game || !game.puzzle) return null;
+  const b = game.state();
+  const snapshot = { ms: b.ms, moves: b.moves, hints: b.hints, rejections: b.rejections, filled: b.filled };
+  game.restart(); // ui/game.js 的 restart() = load(同一局)：values/notes/history/moves/hints/rejections/elapsedMs 全清
+  el.winVeil.hidden = true;
+  game.setMode('ink');
+  setModeButtons();
+  // 从暂停态重开时，load() 已经把状态放回 playing，game.resume() 会被状态机拒绝，
+  // 于是暂停时那次 suspendContext() 永远没人解除（重开之后没声音）。直接解挂；静音时它自己跳过。
+  resumeContext();
+  const a = game.state();
+  syncAll();
+  flushResume();
+  return {
+    before: snapshot,
+    after: { ms: a.ms, moves: a.moves, hints: a.hints, rejections: a.rejections, filled: a.filled },
+  };
+}
+
+// ---- 全屏：绑在 HUD 上真存在的 #btn-fullscreen，没有 API 就把按钮关掉 -----------------------------------
+
+function fullscreenNode() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function canFullscreen() {
+  const doc = document.documentElement;
+  return !!(doc.requestFullscreen || doc.webkitRequestFullscreen || doc.webkitEnterFullscreen);
+}
+
+function syncFullscreen() {
+  const on = !!fullscreenNode();
+  document.body.classList.toggle('is-fullscreen', on);
+  setLabel(el.fsBtn, on ? '退出全屏' : '全屏');
+  el.fsBtn.setAttribute('aria-pressed', String(on));
+  relayout();
+  paint();
+  return on;
+}
+
+function toggleFullscreen() {
+  if (fullscreenNode()) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) {
+      const p = exit.call(document);
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+    return false;
+  }
+  const doc = document.documentElement;
+  const req = doc.requestFullscreen || doc.webkitRequestFullscreen || doc.webkitEnterFullscreen;
+  if (!req) return null;
+  try {
+    const p = req.call(doc, { navigationUI: 'hide' });
+    if (p && typeof p.catch === 'function') p.catch(() => {}); // 非用户手势被拒：留在非全屏
+  } catch {
+    /* 同上 */
+  }
+  return true;
+}
+
+['fullscreenchange', 'webkitfullscreenchange'].forEach((ev) => document.addEventListener(ev, syncFullscreen));
+
+// ---- 静音：真挂起 AudioContext（见 js/audio/synth.js 的 setMuted）------------------------------------
+
+function toggleMute() {
+  const next = !isMuted();
+  setMuted(next);
+  store.setOptions({ muted: next });
+  applySettings();
+  if (!next) play('tap');
+  return next;
+}
+
 // ---- 绑定 ------------------------------------------------------------------------------------
 
 el.modeInk.addEventListener('click', () => {
@@ -583,13 +748,13 @@ function buildAgain() {
   return randomPuzzle(p ? p.tier : options().tier, store);
 }
 
-el.soundBtn.addEventListener('click', () => {
-  const next = !isMuted();
-  setMuted(next);
-  store.setOptions({ muted: next });
-  applySettings();
-  if (!next) play('tap');
-});
+el.soundBtn.addEventListener('click', toggleMute);
+
+el.pauseBtn.addEventListener('click', () => togglePause());
+el.resumePlayBtn.addEventListener('click', () => togglePause(false));
+$('#btn-menu-3').addEventListener('click', () => show('menu'));
+el.restartBtn.addEventListener('click', restartPuzzle);
+el.fsBtn.addEventListener('click', toggleFullscreen);
 
 el.notesBtn.addEventListener('click', () => {
   store.setOptions({ hideNotes: !options().hideNotes });
@@ -597,9 +762,23 @@ el.notesBtn.addEventListener('click', () => {
   paint();
 });
 
+/** Enter/空格在章节页的"开始"：有存档先继续，否则打本章第一个没解过的。 */
+function quickStart() {
+  if (store.state.resume && resumeSaved()) return true;
+  const list = puzzlesOfChapter(0);
+  const solved = new Set(store.state.chapters[0] || []);
+  const next = list.find((p) => !solved.has(p.id)) || list[0];
+  if (next) return !!start(next);
+  beginRandom(options().tier);
+  return true;
+}
+
 window.addEventListener('keydown', (ev) => {
   if (ev.target && /input|textarea/i.test(ev.target.tagName)) return;
   const k = ev.key;
+  // 焦点停在某个按钮上时，空格/回车由浏览器变成那次 click：这里再动一次就是一键两下。
+  const onButton = !!(ev.target && ev.target.closest && ev.target.closest('button'));
+  if ((k === ' ' || k === 'Enter') && onButton) return;
   if (/^[1-9]$/.test(k)) {
     press(Number(k));
     ev.preventDefault();
@@ -612,6 +791,21 @@ window.addEventListener('keydown', (ev) => {
   } else if (k === 'h' || k === 'H') hint();
   else if (k === 'z' || k === 'Z') undo();
   else if (k === 'c' || k === 'C') game && game.check();
+  else if (k === 'p' || k === 'P') {
+    togglePause();
+    ev.preventDefault();
+  } else if (k === 'r' || k === 'R') {
+    if (game && game.puzzle) restartPuzzle();
+    else quickStart();
+  } else if (k === 'm' || k === 'M') toggleMute();
+  else if (k === 'f' || k === 'F') toggleFullscreen();
+  else if (k === '?') show('menu');
+  else if (k === ' ' || k === 'Enter') {
+    // 对局页里空格=暂停（再按一次恢复），章节页里空格/回车=开局
+    if (k === ' ' && !el.viewGame.hidden) togglePause();
+    else quickStart();
+    ev.preventDefault();
+  }
   else if (k === 'ArrowUp') game && game.moveSelection(-1, 0);
   else if (k === 'ArrowDown') game && game.moveSelection(1, 0);
   else if (k === 'ArrowLeft') game && game.moveSelection(0, -1);
@@ -632,9 +826,11 @@ window.addEventListener('pagehide', flushResume);
 function applySettings() {
   setMuted(!!options().muted);
   el.soundBtn.setAttribute('aria-pressed', String(!options().muted));
-  el.soundBtn.textContent = options().muted ? '音效 关' : '音效 开';
+  el.soundBtn.dataset.muted = options().muted ? '1' : '0';
+  setLabel(el.soundBtn, options().muted ? '音效 关' : '音效 开');
   el.notesBtn.setAttribute('aria-pressed', String(!!options().hideNotes));
-  el.notesBtn.textContent = options().hideNotes ? '铅笔 藏' : '铅笔 显';
+  el.notesBtn.dataset.hidden = options().hideNotes ? '1' : '0';
+  setLabel(el.notesBtn, options().hideNotes ? '铅笔 藏' : '铅笔 显');
   store.setOptions({ tier: options().tier });
 }
 
@@ -643,6 +839,13 @@ function applySettings() {
 pushThemeVars();
 buildKeypad();
 applySettings();
+if (!canFullscreen()) {
+  // 没有全屏 API（旧 Safari / iOS）就别让按钮装作能按
+  el.fsBtn.disabled = true;
+  setLabel(el.fsBtn, '不支持全屏');
+}
+applyReduceMotion();
+syncPause();
 renderMenu();
 show('menu');
 if (store.state.resume) {
@@ -679,6 +882,17 @@ window.kakuro = {
     return game.mode;
   },
   buildAgain,
+  restart: restartPuzzle,
+  pause: () => togglePause(true),
+  resume: () => togglePause(false),
+  togglePause,
+  paused: () => !!(game && game.paused),
+  toggleFullscreen,
+  fullscreen: fullscreenNode,
+  canFullscreen,
+  toggleMute,
+  reduceMotion: () => reduceMotion,
+  audioState: contextState,
   renderMenu,
   syncAll,
   elapsed: () => (game ? game.tick() : 0),

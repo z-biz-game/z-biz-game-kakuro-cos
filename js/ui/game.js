@@ -43,7 +43,7 @@ export class Game {
     this.moves = 0;
     this.hints = 0;
     this.rejections = 0;
-    this.status = 'empty'; // empty | playing | won | stuck
+    this.status = 'empty'; // empty | playing | paused | won | stuck
     this.startedAt = 0;
     this.elapsedMs = 0;
     this.message = null;
@@ -102,6 +102,33 @@ export class Game {
     return this.elapsedMs;
   }
 
+  /** 暂停：先把进行中的那段用时结算进 elapsedMs，再改状态。
+   *  tick() 只在 status==='playing' 时读墙钟，所以暂停期间仿真一步都不推进。 */
+  pause() {
+    if (this.status !== 'playing') return { ok: false, why: '只有进行中的局能暂停', status: this.status };
+    this.tick();
+    this.status = 'paused';
+    this.emit('pause', { ms: this.elapsedMs });
+    return { ok: true, ms: this.elapsedMs };
+  }
+
+  /** 恢复：把 startedAt 挪到"墙钟减去已累计用时"，暂停那一段整个跳过。 */
+  resume() {
+    if (this.status !== 'paused') return { ok: false, why: '这一局没在暂停', status: this.status };
+    this.startedAt = Date.now() - this.elapsedMs;
+    this.status = 'playing';
+    this.emit('resume', { ms: this.elapsedMs });
+    return { ok: true, ms: this.elapsedMs };
+  }
+
+  togglePause() {
+    return this.status === 'paused' ? this.resume() : this.pause();
+  }
+
+  get paused() {
+    return this.status === 'paused';
+  }
+
   get filled() {
     if (!this.values) return 0;
     let n = 0;
@@ -124,6 +151,7 @@ export class Game {
     const d = this.diagnosis();
     return {
       status: this.status,
+      paused: this.status === 'paused',
       w: this.board.w,
       h: this.board.h,
       size: `${this.board.w}×${this.board.h}`,
@@ -166,7 +194,7 @@ export class Game {
 
   select(t) {
     if (!this.board || t < 0 || t >= this.board.n) return false;
-    if (this.status === 'won') return false;
+    if (this.status === 'won' || this.status === 'paused') return false;
     this.sel = t;
     this.emit('select');
     return true;
@@ -234,6 +262,7 @@ export class Game {
   }
 
   clearCell() {
+    if (this.status === 'paused') return { ok: false, why: '暂停中，先恢复再改盘面' };
     const t = this.sel;
     if (!this.values[t] && !this.notes[t]) return { ok: false, why: '这格本来就是空的' };
     this.push({ t, from: this.values[t], fromNote: this.notes[t] });
@@ -276,6 +305,7 @@ export class Game {
   }
 
   undo() {
+    if (this.status === 'paused') return { ok: false, why: '暂停中，先恢复再撤销' };
     const e = this.history.pop();
     if (!e) return { ok: false, why: '没有可撤销的步子' };
     this.values[e.t] = 0;
@@ -358,6 +388,7 @@ export class Game {
 
   /** 玩家说"我填完了"：给一个不含答案的判定 + 撞破的 run 名单。 */
   check() {
+    if (this.status === 'paused') return { ok: false, why: '暂停中', bad: [], empty: 0 };
     const bad = verify(this.board, this.values);
     const empty = this.board.n - this.filled;
     if (!bad.length && !empty) {
