@@ -526,3 +526,26 @@ body {
 .fixed-bottom, .bottom-bar, .hud-bottom, footer.app-footer {
   padding-bottom: calc(var(--sab) + env(safe-area-inset-bottom, 0px));
 }
+
+/* ════════════════════════════════════════════════════════════════
+   线上实测（https://z-biz-game.github.io/z-biz-game-kakuro-cos/，CDP setDeviceMetricsOverride
+   dpr=3，读数在 _tmp-live-sweep-r19.log）：320×640 冷/热两腿都报 vw=341≠320——布局视口是被
+   页面自己撑宽的。.topbar 是 nowrap 的 space-between flex，左边 .brand 的 30px 标题、右边
+   .top-actions 那一行 236@105px 的按钮（每个都吃全局 min-height/min-width:44px 的触摸下限），
+   两栏在 320 上排不进一行，于是最右那枚 BTN#btn-notes 50@291 整枚掉到屏幕外。
+   触摸下限不能撤（撤了就退回"手指点不中"那次修复），所以改让这一行会折：.topbar 允许换行、
+   .brand 允许收缩、.top-actions 自己也能折。竖向多占一行不是缺陷，横向出屏才是。
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 420px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .brand { min-width: 0; }
+  .top-actions { flex-wrap: wrap; row-gap: 6px; }
+  /* 同一轮实测里还有一条：320 档 1/16 控件低于 44px —— #btn-reset「清空存档」走的是
+     button.link{min-height:0}，实测 56x20。它是链接样式不假，但它在手机上依然是一次
+     不可撤销的破坏操作，点不中/误触的代价比外观大。只把命中盒撑回 44px，字面照旧。 */
+  button.link {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
