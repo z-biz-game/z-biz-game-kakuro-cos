@@ -46,6 +46,8 @@ export class Game {
     this.status = 'empty'; // empty | playing | won | stuck
     this.startedAt = 0;
     this.elapsedMs = 0;
+    this.paused = false;
+    this.pausedTotal = 0;
     this.message = null;
     this.flash = null; // {cells, run, until}
     this.hintMark = null; // {cell, run, rule, digit, until}
@@ -98,8 +100,27 @@ export class Game {
   // ---- 读数 ----------------------------------------------------------------------------------
 
   tick() {
-    if (this.status === 'playing') this.elapsedMs = Date.now() - this.startedAt;
+    if (this.status === 'playing' && !this.paused) this.elapsedMs = Date.now() - this.startedAt;
     return this.elapsedMs;
+  }
+
+  // ---- 暂停 -----------------------------------------------------------------------------------
+  // 冻结的是**读数本身**，不是外面某个标志位：暂停时把此刻的用时记进 pausedTotal，
+  // tick() 在暂停期间一律返回它 —— 谁来读都是同一个冻结值，标志位本身不可能被绕开。
+  // 恢复时把 startedAt 重新对齐到 pausedTotal，于是 Date.now() - startedAt 从冻结值续走，
+  // 恢复后第一帧的 dt 就是一个正常帧间隔，不会把暂停那几秒一次性吃掉（不跳步）。
+  setPaused(next) {
+    next = !!next;
+    if (this.paused === next) return this.paused;
+    if (next) {
+      this.tick();                      // 先结算到此刻，再停表
+      this.pausedTotal = this.elapsedMs;
+      this.paused = true;
+    } else {
+      this.startedAt = Date.now() - this.pausedTotal;
+      this.paused = false;
+    }
+    return this.paused;
   }
 
   get filled() {

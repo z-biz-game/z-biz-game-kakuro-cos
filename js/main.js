@@ -299,6 +299,34 @@ function stopClock() {
   if (game) game.tick();
 }
 
+// ---- 暂停 -----------------------------------------------------------------------------------
+// 本仓的用时是 game.tick() = Date.now() - game.startedAt。真冻结做在 Game 里（Game.setPaused
+// 会让 tick() 在暂停期间一律返回 pausedTotal），这里只做三件事：把控制权交出去、
+// 停掉那个 1000ms 的 HUD ticker、翻按钮。ticker 必须停：留着它每拍重算一次读数。
+let paused = false;
+let pauseT0 = 0;
+function setPaused(next) {
+  next = !!next;
+  if (paused === next) return paused;
+  if (next) {
+    pauseT0 = Date.now();
+    if (game) game.setPaused(true);
+    stopClock();
+  } else {
+    if (game) game.setPaused(false);
+    startClock();
+  }
+  paused = next;
+  paintPause();
+  return paused;
+}
+function paintPause() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+  btn.textContent = paused ? '继续' : '暂停';
+  btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+}
+
 // ---- 开局 ------------------------------------------------------------------------------------
 
 function start(puzzleLike, { resume = null } = {}) {
@@ -323,6 +351,8 @@ function start(puzzleLike, { resume = null } = {}) {
   setModeButtons();
   show('game');
   startClock();
+  // 换一局＝新的一局，新局一定在走：带着上一局的 paused=true 进来会让时钟和按钮各说各话
+  if (paused) { paused = false; paintPause(); }
   el.hintRule.textContent = '提示理由';
   el.hintLine.textContent = '按 提示 会说出当前能推的一格，以及它依据哪条规则。你自己已经写下、且和线索矛盾的数字，提示会拒绝落子也不计费。';
   syncAll();
@@ -583,6 +613,13 @@ function buildAgain() {
   return randomPuzzle(p ? p.tier : options().tier, store);
 }
 
+// ---- 暂停按钮（#btn-pause，与 P / Space 同一个入口）----
+(function bindPause() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;   // HUD 里没这个 id 就不装，别让量具算出"已实现"的假绿
+  btn.addEventListener('click', () => setPaused(!paused));
+})();
+
 el.soundBtn.addEventListener('click', () => {
   const next = !isMuted();
   setMuted(next);
@@ -612,6 +649,8 @@ window.addEventListener('keydown', (ev) => {
   } else if (k === 'h' || k === 'H') hint();
   else if (k === 'z' || k === 'Z') undo();
   else if (k === 'c' || k === 'C') game && game.check();
+  // 本仓这组快捷键原本没占空格，P 与 Space 一并挂上
+  else if (k === 'p' || k === 'P' || k === ' ' || ev.code === 'Space') { ev.preventDefault(); setPaused(!paused); }
   else if (k === 'ArrowUp') game && game.moveSelection(-1, 0);
   else if (k === 'ArrowDown') game && game.moveSelection(1, 0);
   else if (k === 'ArrowLeft') game && game.moveSelection(0, -1);
@@ -682,6 +721,10 @@ window.kakuro = {
   renderMenu,
   syncAll,
   elapsed: () => (game ? game.tick() : 0),
+  get paused() { return paused; },
+  setPaused,
+  /** 正在推进的那个数（毫秒）。暂停时它必须一毫秒不动 —— 这就是"真冻结"的判据。 */
+  simClock: () => (game ? game.tick() : 0),
   state: () => (game ? { ...game.state(), elapsedMs: game.tick() } : null),
   hitAt: (x, y) => (view && view.layout ? view.hitTest(x, y) : null),
   layout: () => (view ? view.layoutSnapshot() : null),
