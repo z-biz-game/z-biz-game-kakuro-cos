@@ -327,6 +327,15 @@ function paintPause() {
   btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
 }
 
+// 暂停期间盘面不接受操作。榜按 ms 排名（js/store.js 里 `a.ms < b.ms`），所以只停表不锁盘
+// 等于把暂停做成免费的思考时间：想完了按继续，用时里少了几秒。P / Space 与按钮本身照常
+// 有效——被拦下的只是落子那一路，说一句为什么，#state-line 是 aria-live，读屏会念出来。
+function blockedWhilePaused() {
+  if (!paused) return false;
+  el.stateLine.textContent = '暂停中：按 P 或 空格 继续，盘面不接受落子。';
+  return true;
+}
+
 // ---- 开局 ------------------------------------------------------------------------------------
 
 function start(puzzleLike, { resume = null } = {}) {
@@ -351,8 +360,9 @@ function start(puzzleLike, { resume = null } = {}) {
   setModeButtons();
   show('game');
   startClock();
-  // 换一局＝新的一局，新局一定在走：带着上一局的 paused=true 进来会让时钟和按钮各说各话
-  if (paused) { paused = false; paintPause(); }
+  // 换一局＝新的一局，新局一定在走：带着上一局的 paused=true 进来会让时钟和按钮各说各话。
+  // 必须走 setPaused 而不是只手改这个标志——Game 里那份 paused 才是 tick() 读的数。
+  if (paused) setPaused(false);
   el.hintRule.textContent = '提示理由';
   el.hintLine.textContent = '按 提示 会说出当前能推的一格，以及它依据哪条规则。你自己已经写下、且和线索矛盾的数字，提示会拒绝落子也不计费。';
   syncAll();
@@ -522,7 +532,7 @@ function resumeSaved() {
 
 function bindCanvas() {
   el.canvas.addEventListener('pointerdown', (ev) => {
-    if (!game || !view.layout) return;
+    if (!game || !view.layout || blockedWhilePaused()) return;
     ev.preventDefault();
     unlockAudio();
     const rect = el.canvas.getBoundingClientRect();
@@ -551,7 +561,7 @@ function buildKeypad() {
 // ---- 输入：动作 --------------------------------------------------------------------------------
 
 function press(digit) {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   unlockAudio();
   const r = game.press(digit);
   if (r && !r.ok && r.why) syncAll();
@@ -559,12 +569,12 @@ function press(digit) {
 }
 
 function hint() {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   return game.hint();
 }
 
 function undo() {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   return game.undo();
 }
 
@@ -586,9 +596,9 @@ function setModeButtons() {
 
 $('#btn-hint').addEventListener('click', hint);
 $('#btn-undo').addEventListener('click', undo);
-$('#btn-check').addEventListener('click', () => game && game.check());
-$('#btn-erase').addEventListener('click', () => game && game.clearCell());
-$('#btn-fill-notes').addEventListener('click', () => game && game.autoNotes());
+$('#btn-check').addEventListener('click', () => (!blockedWhilePaused() && game) && game.check());
+$('#btn-erase').addEventListener('click', () => (!blockedWhilePaused() && game) && game.clearCell());
+$('#btn-fill-notes').addEventListener('click', () => (!blockedWhilePaused() && game) && game.autoNotes());
 $('#btn-new').addEventListener('click', () => (game ? start(buildAgain()) : null));
 $('#btn-again').addEventListener('click', () => (game ? start(buildAgain()) : null));
 $('#btn-menu').addEventListener('click', () => show('menu'));
@@ -637,6 +647,9 @@ el.notesBtn.addEventListener('click', () => {
 window.addEventListener('keydown', (ev) => {
   if (ev.target && /input|textarea/i.test(ev.target.tagName)) return;
   const k = ev.key;
+  // 暂停锁盘要在这一层挡，不能只挡 press/hint/undo：n、c、Backspace 是直接调 game 的，
+  // 绕过那三个入口。P / Space 是唯一穿得过这里的键——暂停得能用同一只手解开。
+  if (paused && !(k === 'p' || k === 'P' || k === ' ' || ev.code === 'Space')) { blockedWhilePaused(); return; }
   if (/^[1-9]$/.test(k)) {
     press(Number(k));
     ev.preventDefault();

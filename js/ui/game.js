@@ -70,6 +70,10 @@ export class Game {
     this.status = 'playing';
     this.startedAt = Date.now();
     this.elapsedMs = 0;
+    // 新盘不带着上一局的暂停态：paused 留着为真，tick() 就会一直返回刚被清零的 elapsedMs，
+    // 新局顶着一块不走的表（换一局那一步踩过）。
+    this.paused = false;
+    this.pausedTotal = 0;
     this.message = null;
     this.flash = null;
     this.hintMark = null;

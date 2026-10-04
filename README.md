@@ -48,6 +48,7 @@
 | **`C`** / 「检查这一局」 | 只给判定，不给答案：哪条 run 撞破了、还剩几格空着 |
 | **`⌫`** / 「擦这格」 | 清空这一格的墨与铅笔 |
 | 「铅笔 显/藏」、「音效 开/关」 | 界面读数与合成音开关，设置一起进存档 |
+| **`P`** / **空格** / 「暂停」 | 停表**并且锁盘**：暂停期间点白格、按 `1..9`、点数字键盘、`H` `Z` `C` `N` `⌫`、方向键都不碰盘面（`js/main.js` 的 `blockedWhilePaused`），被拦下的理由写进 `#state-line`，那行带 `aria-live="polite"`（断言只验属性在，没验读屏真念，见下面"未验证"）。穿得过锁的只有 P/空格、「暂停」按钮和「换一局」，而换出来的新局一定在走表——`tools/scenarios.js:910` 起的 `pause` 场把这两件事各量成断言 |
 
 内容有三层：**章节题本**（五档 × 5 局 = 25 局，构建期烘好并逐局复验）、**现抽一局**（五档任选，
 入门/简单/中等现场生成；难/烧脑两档在 `TIERS` 里就写着 `live:false`，界面从烘好的 5+5 局里轮着取，
@@ -89,12 +90,20 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
    `SAMPLES=24 npm run balance` 打出的中位数是
    **19.8 < 33.6 < 53.2 < 103.9 < 136.5**（严格递增），各档 `超预算 0/N`，
    `难` 档 `进差法：用到 4/4，不用就推不完 4/4`。
+7. **暂停同时冻住表和盘**：榜是按 `ms` 排名的（`js/store.js` 里 `a.ms < b.ms`），只停表不锁盘的
+   暂停等于把思考时间做成免费的——所以这一句是反洗钱，不是体贴。`pause` 场（`tools/scenarios.js:910`
+   起，44 条）先证明没按暂停时表按墙钟走、HUD 那行时间在刷新（对照组），再要求按下去之后
+   `Δ读数 = 0` 且 HUD 不再被重画；然后把**十路落子入口**逐个按一遍（点白格、按数字、点数字键盘、
+   `H`/`Z`/`C`/`N`/`⌫`、方向键），要求 `values`/`notes`/步数/提示数/选中格/模式六项读数一格没动。
+   反过来它也证明这不是"全场死"：继续后同一格同一个数字立刻落上、照常记步、提示恢复计费；
+   带着暂停态按「换一局」，新局必须在走表——这一条当场抓到过一个真缺陷（`load()` 没清引擎自己的
+   `paused`，新局顶着一块刚被清零又不走的表），现已修好并由 `afterNew.moved > 0` 钉住。
 
 ---
 
 ## 这个仓**不承诺**什么
 
-这一段是上面那六句的可信度来源——反面写清楚，正面才算数。
+这一段是上面那七句的可信度来源——反面写清楚，正面才算数。
 
 - **不承诺"每一条线索都是承重墙"，也不承诺"线索集已是最简"。** 实测（`npm test` H 节）：
   25 局共 **619 条线索，其中 618 条可以单独抹掉而盘面仍然唯一**，1 条在 200k 节点预算内
@@ -167,17 +176,17 @@ npm test             # 引擎断言 144 通过 / 0 失败，分节 A–H（每�
 npm run bake         # 构建期烘 25 局进 js/data/levels.js（连答案 ink 与每一局的读数）
 npm run bake -- --check   # 复验：✓ 25 局复验一致；五档各「超预算 0 局」，穷举节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance # 难度尺：对账 405 格 0 处不一致、五档中位数递增、各档超预算 0/N，不成立就 exit 1
-npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0 失败（HTTP 5316、CDP 9366）
+npm run verify       # 真实 headless Chrome：15 个场景 / 275 条断言 / 0 失败（HTTP 5316、CDP 9366）
 ```
 
 - `npm test` 的八节：A 组合数学（405 个合式 `(L,S)` 的 DP 表与穷举逐格相等）｜B 哨兵值｜
   C 铅笔规则可靠性（2,362 条结论逐条被独立穷举确认）｜D 进差法（40 条事件、14 种片区说法）｜
   E 两套实现逐格一致｜F 超预算 ≠ 唯一｜G 铅笔推得完｜H 冗余线索**实测**。
 - `npm run verify` 的场景：`first play hint conflict win resume-a resume-b resume-c resume-d
-  dirty-a dirty-b dirty-c touch geom`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
+  dirty-a dirty-b dirty-c touch geom pause`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
   墨色数字像素、触摸目标 ≥44px、5×5 与 10×10 的几何对拍），不读内部标志位。
   `verify.sh` 有 pre-flight：先 `curl` 首页、`grep 加算十字`，证明 5316 上服务的是本作。
-- 这套闸在**三种形态**下各自跑过，都是 14 场景 231 条 0 失败（2026-09-28 本机实测）：
+- 这套闸在**三种形态**下各自跑过，都是 15 场景 275 条 0 失败（2026-10-04 本机实测）：
   ① 根形态 `npm run verify`（`http://127.0.0.1:5316/`，`server.cjs` 把仓库当文档根）；
   ② Pages 的 `/<repo>/` 前缀形态——把仓库软链进一个父目录、用 `python3 -m http.server` 服务那个
   父目录，`BASE_URL=http://127.0.0.1:<port>/z-biz-game-kakuro-cos/`（CI 的 browser job 就是这么起的，
@@ -188,13 +197,18 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0
   不占位的 overlay 滚动条，runner 上滚动条要从同一列里拿走 15px，只有 ③ 才会暴露"宽度由高度
   决定"那一类布局。已部署站点另算一条口径（`BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify`），
   每次上线之后复跑，数字记在本节末。
+- **还有一个开关是给闸自己用的**：`USER_GESTURE=0 SCENARIOS=pause bash tools/verify.sh` 故意**不发**
+  那份瞬时用户激活（`requestFullscreen()` 的前置条件），第十五场于是走"全屏被拒"那一支——
+  本机实测 34 条 / 0 失败（`fs:'refused'`）。要这个开关的理由：正常跑法永远走不到那一支，
+  走不到的代码等于从没被测过；两支各跑一遍之后，"按钮状态就是本作对能不能全屏的说法"这句
+  才是量出来的，不是读代码读出来的（完整因果在 `DESIGN.md` §9）。
 - **可选诊断**：`REDUNDANT=1 npm run bake -- --check` 或 `REDUNDANT=1 npm run balance` 会逐局打
   "可省线索 X/Y 条"。它**只打数、不 fail**，理由写在 `tools/balance.mjs:232-236`：
   可省不是违规（"线索最小"从来不是承诺），真正会 fail 的只有 `unproven`——那是"这次测量没做完"，
   而不是"这条线索必要"；要下结论只能加 `REDUNDANT_NODES` 重跑。
 - CI（`.github/workflows/ci.yml`）跑 check / bake --check / balance(SAMPLES=24) / 引擎测试 / 入口文件，
   **不 `npm install`**：零运行时依赖、零构建步骤，装依赖只会换来网络抖动。
-  浏览器门禁也进 CI：`browser` job 把 `npm run verify` 那 14 个场景跑两遍——root 形态（`server.cjs` 把仓库当文档根）
+  浏览器门禁也进 CI：`browser` job 把 `npm run verify` 那 15 个场景跑两遍——root 形态（`server.cjs` 把仓库当文档根）
   与 Pages 真实形态（仓库挂在 `/<repo>/` 一段下）。第二遍不是凑对称：根形态的服务器分不出
   "斜杠开头的 import"和"相对 import"，同组织的 ulam 就在 Pages 前缀下丢过一整段根本没跑的断言，
   本机却全绿。`node-version: 22` 是被 `tools/playtest.cjs` 钉的——它用 22+ 才有的全局
@@ -214,7 +228,7 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0
   铅笔走"每格 2 字节小端 + RLE"；读进来每个字段都过 `sanitize*`，脏数据吞得下、
   `localStorage` 整个儿抛异常（隐私模式）也照样能玩；`reset` 内存与磁盘两边都清。
 - 规模：13 个运行时 ES Module + 6 个验证脚本，**运行时依赖 0 个**；
-  引擎测试 144 条断言、浏览器断言 231 条，均为实测（出处见上）。
+  引擎测试 144 条断言、浏览器断言 275 条，均为实测（出处见上）。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
   线上产物按这一条核对：把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，

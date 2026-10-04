@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # One-shot browser verification: real headless Chrome, real DOM, real localStorage.
 #
-#   ./tools/verify.sh                       # all 14 scenarios
+#   ./tools/verify.sh                       # all 15 scenarios
 #   SCENARIOS="first play" ./tools/verify.sh
 #   BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ ./tools/verify.sh
 #       ^ the Pages shape: same app under a /<repo>/ prefix, served by the real CDN.
-#         2026-09-28 run of that form: 14 场景 231 checks, 0 failed.
+#         2026-09-28 run of that form, pinned at the then-deployed 7a26fb0 (before `pause`):
+#         14 场景 231 checks 0 failed; this tree on that shape is 15 场景 275 checks 0 failed.
 #
 # Do NOT add --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader: software
 # rasterisation saturates every core and, with no CDP client attached, Chrome will not exit
@@ -83,7 +84,7 @@ echo "boot: kakuro $BOOT at $BASE"
 [ "$BOOT" = "nope" ] && { echo "window.kakuro never appeared at $BASE" >&2; exit 4; }
 
 FAILED=0
-for s in ${SCENARIOS:-first play hint conflict win resume-a resume-b resume-c resume-d dirty-a dirty-b dirty-c touch geom}; do
+for s in ${SCENARIOS:-first play hint conflict win resume-a resume-b resume-c resume-d dirty-a dirty-b dirty-c touch geom pause}; do
   echo "=== $s ==="
   node tools/playtest.cjs scenario "$s" 2>/tmp/kakuro-$s.console.log | tail -1 | sed 's/^RESULT //' | python3 -c "
 import sys, json

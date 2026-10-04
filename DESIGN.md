@@ -1,7 +1,7 @@
 # 设计说明 · 加算十字 Kakuro
 
 这份文件讲"为什么这样写"。要跑起来请看 `README.md`；要看断言请看 `tools/engine-test.mjs`
-（144 条，A–H 八节）与 `tools/scenarios.js`（14 个场景 / 231 条浏览器断言）——
+（144 条，A–H 八节）与 `tools/scenarios.js`（15 个场景 / 275 条浏览器断言）——
 **这个项目里的每一句承诺，都对应一条会红的断言或一个实测数字。**
 
 代码里有五处注释按小节号指回这份文档，编号就是它们的地址：
@@ -267,6 +267,43 @@ float32 间距翻倍的线也试过）逐点回读，再逐帧采 60 帧（帧�
 
 ---
 
+## 9. 暂停冻的是两样，全屏那条腿为什么要抢在最前面
+
+**暂停为什么要连盘面一起冻。** 本作的成绩榜按 `ms` 从小到大排（`js/store.js` 里那句
+`return a.ms < b.ms;`）。如果暂停只把 `elapsedMs` 钉住而盘面照常能吃子，玩家就得到了一段
+**不计费的思考时间**：想完整盘再按继续，交上去的用时里少掉了几秒——榜还在，榜的含义已经
+被改写了。所以 `js/main.js` 的 `blockedWhilePaused()` 不是体贴的提示，是把这条洗钱路径堵死。
+
+**为什么拦在 `keydown` 那一层，而不是只包 `press/hint/undo` 三个函数。** `n`（切模式）、
+`c`（检查）、`Backspace`/`0`（擦格）是直接调 `game` 的，绕过那三个包装口；数字键盘的点击
+另有自己的 handler。只在函数层加锁，锁不住的东西会从按键那条缝里漏进来，而漏进来的那一下
+没有理由文本——玩家只看到盘面动了又不动、说明也读不到。于是锁分三处：`keydown` 入口一条
+总闸（放行 P/空格，否则暂停解不开）、`press/hint/undo` 各一条、`pointerdown` 与那三颗直调
+`game` 的按钮各一条。`pause` 场把十路入口逐个按一遍，就是在替这条分叉路把账收平。
+
+**为什么 `load()` 要清掉引擎自己的 `paused`。** 时钟有两个家：`js/main.js` 的模块变量
+`paused`（界面读它）和 `Game.paused`（`tick()` 读它）。"换一局"原先只复位前者，新局于是
+顶着一块刚被 `load()` 清零、又被 `tick()` 判为暂停而永不更新的表——按钮写着「暂停」、表停在
+`00:00`，两边各说各话。这条是 `pause` 场新增的断言（`afterNew.moved > 0`）当场抓出来的真缺陷，
+不是先想到再写下的。修法两层都要落：`load()` 里清 `paused/pausedTotal`，`start()` 走
+`setPaused(false)` 而不是手改变量——只有那个 setter 会把 `startedAt` 重挂回正确基线。
+
+**全屏那条腿为什么要排在场景最前面。** `requestFullscreen()` 要**瞬时用户激活**，而
+`Runtime.evaluate(..., userGesture: true)` 一次调用只发**一份**激活额度（第一下
+`requestFullscreen()` 就把它吃掉，且这份额度会过期）。后果有两条：同一场里第二次请求"进入"
+必被拒（退出不需要激活，所以退出那一步照样能验）；更要紧的是，上一版把全屏排在场景末尾、
+前面攒了几秒 `await wait(...)`，于是**第一次**进入也被拒——那条红差点被当成"全屏按钮坏了"，
+其实是排布问题。现在的排法是名册断言一过就点全屏，后面才是那些需要 `wait` 的时钟断言。
+
+**被拒那一支要断什么，以及它凭什么能被跑到。** 环境拒的是一次**授权**，不是这个功能，
+所以那一支不判"没进全屏＝缺陷"，只判两件事：本作对自己的说法必须与探测一致
+（`js/main.js:827` 只在探不到请求方法时才禁用按钮并写明原因），以及被拒时按钮不许假装按下。
+这一支在授予激活的机器上永远走不到——走不到就等于从没被测过。所以 `tools/playtest.cjs`
+认 `USER_GESTURE=0`：故意不发那份激活，全屏必被拒。本机两种都跑过并记在日志里，
+授予激活 `44 checks, 0 failed`（`fs:'entered'`），收回激活 `34 checks, 0 failed`（`fs:'refused'`）。
+
+---
+
 ## 复现这些数字
 
 ```bash
@@ -274,11 +311,14 @@ npm run check                  # 逐文件 node --check + 入口断言 → OK
 npm test                       # 144 条引擎断言（A–H 八节，每节打实测数字）
 npm run bake -- --check        # ✓ 25 局复验一致；五档各「超预算 0 局」，节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance     # 对账 405 格 0 处不一致；中位数阶梯；各档超预算 0/N → exit 0
-npm run verify                 # 本机 headless Chrome：14 个场景 / 231 条断言 / 0 失败（5316 / 9366）
+npm run verify                 # 本机 headless Chrome：15 个场景 / 275 条断言 / 0 失败（5316 / 9366）
                                # CI 的 browser job 把这一套跑两遍（root 与 Pages 的 /<repo>/ 前缀）；
-                               # 2026-09-28 本机三形态各自实测：root 231/0、Pages 前缀 231/0、
-                               # Pages 前缀 + 经典 15px 滚动条（runner 的形态，CHROME_EXTRA_FLAGS 见
-                               # tools/verify.sh:48-50）231/0；BASE_URL 指向已部署站点的复验单独记录在 README
+                               # 2026-10-04 本机三形态各自实测：root 275/0、Pages 前缀 275/0、
+                               # Pages 前缀 + 经典 15px 滚动条（runner 的形态，CHROME_EXTRA_FLAGS
+                               # 那段注释就在 tools/verify.sh 里）各自 275/0；
+                               # USER_GESTURE=0 SCENARIOS=pause bash tools/verify.sh 是收回那份瞬时用户
+                               # 激活的跑法，专门用来跑全屏"被拒"那一支：34 条 / 0 失败（fs:'refused'）；
+                               # BASE_URL 指向已部署站点的复验单独记录在 README
 ```
 
 `tools/scenarios.js` 的纪律与 `tools/engine-test.mjs` 一致：期望值**手写死**，读 DOM 几何与
