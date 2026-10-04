@@ -6,7 +6,9 @@
 #   BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ ./tools/verify.sh
 #       ^ the Pages shape: same app under a /<repo>/ prefix, served by the real CDN.
 #         2026-09-28 run of that form, pinned at the then-deployed 7a26fb0 (before `pause`):
-#         14 场景 231 checks 0 failed; this tree on that shape is 15 场景 275 checks 0 failed.
+#         14 场景 231 checks 0 failed. Re-run on 2026-10-04 against the deployed 3db4864:
+#         15 场景 275 checks 0 failed（pause 那条交回 fs:'entered'），and all 16 CDN files came
+#         back byte-identical to that SHA.
 #
 # Do NOT add --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader: software
 # rasterisation saturates every core and, with no CDP client attached, Chrome will not exit

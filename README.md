@@ -231,14 +231,19 @@ npm run verify       # 真实 headless Chrome：15 个场景 / 275 条断言 / 0
   引擎测试 144 条断言、浏览器断言 275 条，均为实测（出处见上）。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
-  线上产物按这一条核对：把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
-  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `7a26fb0`（2026-09-28）这一次的结果记在下面
+  线上产物按这一条核对：把 CDN 上那些 `index.html + css/* + js/*` 逐字节比回 HEAD（个数由
+  `git ls-tree -r <SHA> --name-only` 现数，`3db4864` 上是 16 个），
+  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `3db4864`（2026-10-04）这一次的结果记在下面
   （它比"最新"更结实：每次上线都换一个新的观测值，只有锚定的那次能说它当时是多少）——
-  `pages.yml` 那条部署 job 自己报 success；15 个相同、0 个不一致；对着 CDN 实跑是
-  **14 场景 231 条 / 0 失败**、exit 0，`win` 那条交回 `againBox [98, 44]` 对 `laidOut '44px'`、
-  `settleTicks 10`、`flightAnims ['rise:running:33']`——量之前入场动画还在飞，落定之后再读就是
-  这只盒自己的布局高度。同一 SHA 在 runner 上两形各一遍也是 14/231/0，引擎那条打
-  `144 通过 / 0 失败`。
+  `pages.yml` 那条部署 job 自己报 success；16 个相同、0 个不一致、0 个取不到；对着 CDN 实跑是
+  **15 场景 275 条 / 0 失败**、exit 0，`pause` 那条交回 `fs 'entered'` 与 `frozen 0`/`frozenP 0`/
+  `jump 31`（全屏腿在线上排得进去，不是只在 localhost 才绿；两处冻表读数都是恰好 0，恢复的第一帧
+  只前进 31 ms）；`win` 那条交回 `againBox [98, 44]` 对 `laidOut '44px'`、`settleTicks 9`、
+  `flightAnims ['rise:running:33']`——量之前入场动画还在飞，落定之后再读就是这只盒自己的布局高度。
+  CI 在同一个 SHA 上两条 job 都报 success（run #18：`real browser gate (both URL shapes)` 与
+  `syntax + engine guarantees`）——job 自己打印的条数存在 Actions 日志里，本机这把 PAT 没有
+  `actions:read`（读日志 403），所以这里不抄 runner 的数，只记它红绿。引擎那 144 条在 HEAD 上
+  `npm run test` 打的是 `144 通过 / 0 失败`。
 
 ---
 
