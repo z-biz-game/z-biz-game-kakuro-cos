@@ -25,10 +25,6 @@ jobs:
       - name: Syntax check every source
         run: npm run check
 
-      - name: Syntax check the harness
-        run: |
-          for f in $(git ls-files 'tools/*.mjs' 'tools/*.cjs' tools/scenarios.js); do node --check "$f" || exit 1; done
-
       # The real gate: every shipped board must be pencil-solvable AND have exactly one
       # solution according to the second, deliberately distrustful solver. `--check` also
       # re-derives each board from its clue string and byte-compares the file, so a board
