@@ -117,5 +117,9 @@ kill $WD 2>/dev/null
 echo "=== deploy-set ==="
 node tools/deploy-set.mjs || FAILED=1
 node tools/deploy-set-selftest.mjs || FAILED=1
+# 文档行号对账：README / DESIGN 里印着的每一条 `path:NN` 都要真指回它描述的那几行。
+# 只在 CI 跑的门不算门，所以这条进本地整闸；ci.yml 的 check job 跑的是同一条命令。
+echo "=== doctest ==="
+node tools/docs-test.mjs || FAILED=1
 [ $FAILED -eq 0 ] && echo "=== ALL GREEN ===" || echo "=== FAILURES ABOVE ==="
 exit $FAILED

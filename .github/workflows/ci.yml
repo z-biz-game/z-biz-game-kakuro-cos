@@ -51,6 +51,12 @@ jobs:
       - name: Engine tests
         run: node tools/engine-test.mjs
 
+      # 文档行号对账：README / DESIGN 印着几十条「去看第 N 行」，写那句话时没有任何机器核过。
+      # 这一跑把每条引用的"文件在不在、行号在不在界内、被指的那几行是不是整段空行、贴着引用的
+      # 名字在不在场"变成会红的断言，并把文档抄的条数按等式对上。tools/verify.sh 跑同一条命令。
+      - name: Doc citations reconcile (文档行号对账)
+        run: node tools/docs-test.mjs
+
       - name: Entry files exist
         run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html && grep -q 'window.kakuro' js/main.js
       # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
