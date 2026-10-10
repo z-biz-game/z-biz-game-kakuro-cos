@@ -1,76 +1,56 @@
 'use strict';
-// 离线壳。**网络优先**：同源 GET 先打网络，命中就回填缓存；只有断网/5xx 才回落缓存。
-// 为什么不用 cache-first：js/css 会被永久钉死在第一次抓到的版本上，发一版新 HTML 配旧
-// JS 就是鬼状态（本仓的模块是 js/main.js 一路 import 下去的，钉住任何一环都会裂）。
+// 离线可用 + 永不被旧缓存钉住。
 //
-// 路径一律相对 self.location 解析：Pages 把本站放在 /z-biz-game-kakuro-cos/ 前缀下，
-// 写死 '/' 会让前缀形态离线全灭。
-//
-// VERSION 跟着 package.json 的 version 走；改了它，activate 会把旧缓存整个换掉。
+// 两条实测换来的口径：
+//   1) 一律 **网络优先**，命中网络才回填缓存。手工 VERSION + cache-first 的组合，
+//      发出去的 HTML 会配上上一版的 js/css，出一个"新界面配旧逻辑"的鬼状态，
+//      而且玩家自己无法恢复（只能等缓存过期）。
+//   2) 缓存名带版本号（activate 时清掉非本版的名字）。改版**不需要**同步 bump：
+//      同名文件重绘之后，网络优先这一条保证客户端下一次联网就拿到新字节。
+const VERSION = 'kakuro-cos-v1';
+const CACHE = `${VERSION}-shell`;
+const PRECACHE = ['index.html', 'manifest.webmanifest'];
 
-const VERSION = 'v1.0.0';
-const CACHE = `kakuro-${VERSION}`;
-const CORE = [
-  '.',
-  'index.html',
-  'manifest.webmanifest',
-  'css/game.css',
-  'js/main.js',
-  'js/library.js',
-  'js/store.js',
-  'js/theme.js',
-  'js/audio/synth.js',
-  'js/data/levels.js',
-  'js/engine/kakuro.js',
-  'js/engine/combos.js',
-  'js/engine/count.js',
-  'js/engine/generate.js',
-  'js/engine/rng.js',
-  'js/render/board.js',
-  'js/ui/game.js',
-  'assets/icons/icon-192.png',
-  'assets/icons/icon-512.png',
-  'assets/icons/favicon-32.png',
-  'assets/icons/apple-touch-icon.png',
-  'assets/textures/paper-256.png',
-];
-
-const at = (p) => new URL(p, self.location).href;
-
-self.addEventListener('install', () => {
-  self.skipWaiting();
-  caches.open(CACHE).then((c) => Promise.allSettled(CORE.map((p) => c.add(at(p))))).catch(() => {});
+self.addEventListener('install', (ev) => {
+  // 首屏两件套先抓下来：断网时至少能打开界面，而不是浏览器的错误页。
+  ev.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(PRECACHE).catch(() => {})).then(() => self.skipWaiting())
+  );
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
+self.addEventListener('activate', (ev) => {
+  ev.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
+self.addEventListener('fetch', (ev) => {
+  const req = ev.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  e.respondWith(
+
+  ev.respondWith(
     fetch(req)
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          caches.open(CACHE).then((c) => c.put(req, copy));
         }
         return res;
       })
-      .catch(() =>
-        caches.match(req).then((hit) => {
-          if (hit) return hit;
-          // 导航请求离线时回落到缓存里的那份壳，别给玩家一个白屏
-          return req.mode === 'navigate' ? caches.match(at('index.html')) : Response.error();
-        })
-      )
+      .catch(async () => {
+        const hit = await caches.match(req);
+        if (hit) return hit;
+        // 导航请求（地址栏/刷新/桌面图标）离线时回落到缓存的那份壳，不白屏。
+        if (req.mode === 'navigate') {
+          const shell = await caches.match('index.html');
+          if (shell) return shell;
+        }
+        return Response.error();
+      })
   );
 });

@@ -354,6 +354,43 @@ function stopClock() {
   if (game) game.tick();
 }
 
+// ---- 暂停 -----------------------------------------------------------------------------------
+// 本仓的用时是 game.tick() = Date.now() - game.startedAt。真冻结做在 Game 里（Game.setPaused
+// 会让 tick() 在暂停期间一律返回 pausedTotal），这里只做三件事：把控制权交出去、
+// 停掉那个 1000ms 的 HUD ticker、翻按钮。ticker 必须停：留着它每拍重算一次读数。
+let paused = false;
+let pauseT0 = 0;
+function setPaused(next) {
+  next = !!next;
+  if (paused === next) return paused;
+  if (next) {
+    pauseT0 = Date.now();
+    if (game) game.setPaused(true);
+    stopClock();
+  } else {
+    if (game) game.setPaused(false);
+    startClock();
+  }
+  paused = next;
+  paintPause();
+  return paused;
+}
+function paintPause() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+  btn.textContent = paused ? '继续' : '暂停';
+  btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+}
+
+// 暂停期间盘面不接受操作。榜按 ms 排名（js/store.js 里 `a.ms < b.ms`），所以只停表不锁盘
+// 等于把暂停做成免费的思考时间：想完了按继续，用时里少了几秒。P / Space 与按钮本身照常
+// 有效——被拦下的只是落子那一路，说一句为什么，#state-line 是 aria-live，读屏会念出来。
+function blockedWhilePaused() {
+  if (!paused) return false;
+  el.stateLine.textContent = '暂停中：按 P 或 空格 继续，盘面不接受落子。';
+  return true;
+}
+
 // ---- 开局 ------------------------------------------------------------------------------------
 
 function start(puzzleLike, { resume = null } = {}) {
@@ -378,6 +415,9 @@ function start(puzzleLike, { resume = null } = {}) {
   setModeButtons();
   show('game');
   startClock();
+  // 换一局＝新的一局，新局一定在走：带着上一局的 paused=true 进来会让时钟和按钮各说各话。
+  // 必须走 setPaused 而不是只手改这个标志——Game 里那份 paused 才是 tick() 读的数。
+  if (paused) setPaused(false);
   el.hintRule.textContent = '提示理由';
   el.hintLine.textContent = '按 提示 会说出当前能推的一格，以及它依据哪条规则。你自己已经写下、且和线索矛盾的数字，提示会拒绝落子也不计费。';
   syncAll();
@@ -546,13 +586,8 @@ function resumeSaved() {
 // ---- 输入：画布 -------------------------------------------------------------------------------
 
 function bindCanvas() {
-  // 一次落点只做一件事：选格。坐标必须换算回布局像素 ——
-  // rect.width 是"渲染出来的 CSS 宽"，layout.width 是"排版时算出的宽"，页面缩放/全屏会让两者不等，
-  // 不乘这个比值，手机上就是点 A 打 B（规范 §2 触摸输入）。
-  const pick = (ev) => {
-    if (!game || !view.layout) return;
-    const t = ev.touches && ev.touches.length ? ev.touches[0] : ev;
-    if (typeof t.clientX !== 'number') return;
+  el.canvas.addEventListener('pointerdown', (ev) => {
+    if (!game || !view.layout || blockedWhilePaused()) return;
     ev.preventDefault();
     unlockAudio();
     const rect = el.canvas.getBoundingClientRect();
@@ -589,7 +624,7 @@ function buildKeypad() {
 // ---- 输入：动作 --------------------------------------------------------------------------------
 
 function press(digit) {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   unlockAudio();
   const r = game.press(digit);
   if (r && !r.ok && r.why) syncAll();
@@ -597,12 +632,12 @@ function press(digit) {
 }
 
 function hint() {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   return game.hint();
 }
 
 function undo() {
-  if (!game) return null;
+  if (!game || blockedWhilePaused()) return null;
   return game.undo();
 }
 
@@ -734,9 +769,9 @@ function setModeButtons() {
 
 $('#btn-hint').addEventListener('click', hint);
 $('#btn-undo').addEventListener('click', undo);
-$('#btn-check').addEventListener('click', () => game && game.check());
-$('#btn-erase').addEventListener('click', () => game && game.clearCell());
-$('#btn-fill-notes').addEventListener('click', () => game && game.autoNotes());
+$('#btn-check').addEventListener('click', () => (!blockedWhilePaused() && game) && game.check());
+$('#btn-erase').addEventListener('click', () => (!blockedWhilePaused() && game) && game.clearCell());
+$('#btn-fill-notes').addEventListener('click', () => (!blockedWhilePaused() && game) && game.autoNotes());
 $('#btn-new').addEventListener('click', () => (game ? start(buildAgain()) : null));
 $('#btn-again').addEventListener('click', () => (game ? start(buildAgain()) : null));
 $('#btn-menu').addEventListener('click', () => show('menu'));
@@ -761,13 +796,20 @@ function buildAgain() {
   return randomPuzzle(p ? p.tier : options().tier, store);
 }
 
-el.soundBtn.addEventListener('click', toggleMute);
+// ---- 暂停按钮（#btn-pause，与 P / Space 同一个入口）----
+(function bindPause() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;   // HUD 里没这个 id 就不装，别让量具算出"已实现"的假绿
+  btn.addEventListener('click', () => setPaused(!paused));
+})();
 
-el.pauseBtn.addEventListener('click', () => togglePause());
-el.resumePlayBtn.addEventListener('click', () => togglePause(false));
-$('#btn-menu-3').addEventListener('click', () => show('menu'));
-el.restartBtn.addEventListener('click', restartPuzzle);
-el.fsBtn.addEventListener('click', toggleFullscreen);
+el.soundBtn.addEventListener('click', () => {
+  const next = !isMuted();
+  setMuted(next);
+  store.setOptions({ muted: next });
+  applySettings();
+  if (!next) play('tap');
+});
 
 el.notesBtn.addEventListener('click', () => {
   store.setOptions({ hideNotes: !options().hideNotes });
@@ -789,9 +831,9 @@ function quickStart() {
 window.addEventListener('keydown', (ev) => {
   if (ev.target && /input|textarea/i.test(ev.target.tagName)) return;
   const k = ev.key;
-  // 焦点停在某个按钮上时，空格/回车由浏览器变成那次 click：这里再动一次就是一键两下。
-  const onButton = !!(ev.target && ev.target.closest && ev.target.closest('button'));
-  if ((k === ' ' || k === 'Enter') && onButton) return;
+  // 暂停锁盘要在这一层挡，不能只挡 press/hint/undo：n、c、Backspace 是直接调 game 的，
+  // 绕过那三个入口。P / Space 是唯一穿得过这里的键——暂停得能用同一只手解开。
+  if (paused && !(k === 'p' || k === 'P' || k === ' ' || ev.code === 'Space')) { blockedWhilePaused(); return; }
   if (/^[1-9]$/.test(k)) {
     press(Number(k));
     ev.preventDefault();
@@ -804,21 +846,8 @@ window.addEventListener('keydown', (ev) => {
   } else if (k === 'h' || k === 'H') hint();
   else if (k === 'z' || k === 'Z') undo();
   else if (k === 'c' || k === 'C') game && game.check();
-  else if (k === 'p' || k === 'P') {
-    togglePause();
-    ev.preventDefault();
-  } else if (k === 'r' || k === 'R') {
-    if (game && game.puzzle) restartPuzzle();
-    else quickStart();
-  } else if (k === 'm' || k === 'M') toggleMute();
-  else if (k === 'f' || k === 'F') toggleFullscreen();
-  else if (k === '?') show('menu');
-  else if (k === ' ' || k === 'Enter') {
-    // 对局页里空格=暂停（再按一次恢复），章节页里空格/回车=开局
-    if (k === ' ' && !el.viewGame.hidden) togglePause();
-    else quickStart();
-    ev.preventDefault();
-  }
+  // 本仓这组快捷键原本没占空格，P 与 Space 一并挂上
+  else if (k === 'p' || k === 'P' || k === ' ' || ev.code === 'Space') { ev.preventDefault(); setPaused(!paused); }
   else if (k === 'ArrowUp') game && game.moveSelection(-1, 0);
   else if (k === 'ArrowDown') game && game.moveSelection(1, 0);
   else if (k === 'ArrowLeft') game && game.moveSelection(0, -1);
@@ -909,6 +938,10 @@ window.kakuro = {
   renderMenu,
   syncAll,
   elapsed: () => (game ? game.tick() : 0),
+  get paused() { return paused; },
+  setPaused,
+  /** 正在推进的那个数（毫秒）。暂停时它必须一毫秒不动 —— 这就是"真冻结"的判据。 */
+  simClock: () => (game ? game.tick() : 0),
   state: () => (game ? { ...game.state(), elapsedMs: game.tick() } : null),
   hitAt: (x, y) => (view && view.layout ? view.hitTest(x, y) : null),
   layout: () => (view ? view.layoutSnapshot() : null),
@@ -932,3 +965,111 @@ window.kakuro = {
     decodeNotes,
   },
 };
+
+// ---- 全屏开关 ----
+//
+// 绑到 index.html 的 HUD 里真实存在的 #btn-fullscreen。
+// 只在 js 里留一串 requestFullscreen 能骗过字符串扫描，但按钮不在 DOM 里就是死代码：
+// 玩家按不到，功能等于没做。所以 id 必须与 HTML 里的按钮对得上，缺失时要在控制台喊出来。
+//
+// 三套 API 一律**特性探测**，不做 UA 判断：iPhone 版 Safari 压根没有元素全屏（只有 <video> 能全屏），
+// 老 Edge 只认 ms 前缀，Firefox 认 moz 前缀。UA 字符串是猜的，方法在不在是量的，猜错就静默失效。
+function fsRoot() {
+  return document.documentElement;
+}
+
+function fsElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function fsRequest(root) {
+  // 老 Edge 的 msRequestFullscreen 挂在元素上，和标准名同一个位置，所以并排取即可。
+  return root.requestFullscreen || root.webkitRequestFullscreen || root.msRequestFullscreen || null;
+}
+
+// iOS Safari 会把非 video 元素的请求直接 reject 成 NotAllowedError。
+// 这个 promise 没人接就升级成 unhandledrejection，冒到 window.onerror——离屏预载时足以把整页判死。
+// 因此凡是可能返回 promise 的调用，返回值一律就地吞掉，绝不让拒绝逃出这一层。
+function fsQuiet(p) {
+  if (p && typeof p.catch === 'function') p.catch(() => {});
+  return p;
+}
+
+// 返回 true=请求进入，false=请求退出，null=不支持（调用方据此禁用按钮）。
+function toggleFullscreen(root) {
+  const req = fsRequest(root);
+  if (!req) return null;
+  if (fsElement()) {
+    // 退出侧同样要兜底：老 Edge 是 msExitFullscreen；万一三者皆无就当无事发生，不抛。
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit) fsQuiet(exit.call(document));
+    return false;
+  }
+  // 部分实现（如被 Permissions-Policy 挡住的 iframe）会同步抛，所以 catch 和 .catch 两头都要接。
+  try {
+    fsQuiet(req.call(root));
+  } catch (err) {
+    // 拒绝即降级：静默保持当前形态，不冒泡、不打断这一局的其余逻辑。
+  }
+  return true;
+}
+
+function bindFullscreen(btn) {
+  const root = fsRoot();
+
+  // 状态回写：Esc 和 iOS 下滑手势退出时不会经过按钮，
+  // 只有 fullscreenchange 事件能把按钮的文案/字形拉回正确状态，否则它会一直假装自己在全屏里。
+  const sync = () => {
+    const on = !!fsElement();
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? "退出全屏" : "全屏";
+    btn.title = on ? "退出全屏 (F)" : "全屏 (F)";
+    document.body.classList.toggle('is-fullscreen', on);
+    return on;
+  };
+
+  if (!fsRequest(root)) {
+    // 不支持就要说明为什么：只把按钮变灰，玩家会以为这活根本没做完。
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+    btn.title = '这个浏览器不提供元素全屏（iOS Safari 请用「添加到主屏幕」）';
+    return;
+  }
+
+  btn.addEventListener('click', () => {
+    toggleFullscreen(root);
+    sync();
+  });
+
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+
+  window.addEventListener('keydown', (ev) => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    // 正在输入框里打字时不劫持按键，否则会打不出 f。
+    if (ev.target && /^(input|textarea|select)$/i.test(ev.target.tagName)) return;
+    if (ev.key === "f" || ev.key === "F") {
+      ev.preventDefault();
+      toggleFullscreen(root);
+      sync();
+    }
+  });
+
+  sync();
+}
+
+function bootFullscreen() {
+  const btn = document.getElementById("btn-fullscreen");
+  if (!btn) {
+    // 按钮被谁删掉了？在控制台喊出来，别让这个坑静默地烂在下一棒手里。
+    console.warn('[fullscreen] index.html 里找不到 #' + "btn-fullscreen" + '，全屏开关没有入口');
+    return;
+  }
+  bindFullscreen(btn);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootFullscreen);
+} else {
+  bootFullscreen();
+}

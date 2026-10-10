@@ -48,6 +48,7 @@
 | **`C`** / 「检查这一局」 | 只给判定，不给答案：哪条 run 撞破了、还剩几格空着 |
 | **`⌫`** / 「擦这格」 | 清空这一格的墨与铅笔 |
 | 「铅笔 显/藏」、「音效 开/关」 | 界面读数与合成音开关，设置一起进存档 |
+| **`P`** / **空格** / 「暂停」 | 停表**并且锁盘**：暂停期间点白格、按 `1..9`、点数字键盘、`H` `Z` `C` `N` `⌫`、方向键都不碰盘面（`js/main.js` 的 `blockedWhilePaused`），被拦下的理由写进 `#state-line`，那行带 `aria-live="polite"`（断言只验属性在，没验读屏真念，见下面"未验证"）。穿得过锁的只有 P/空格、「暂停」按钮和「换一局」，而换出来的新局一定在走表——`tools/scenarios.js:910` 起的 `pause` 场把这两件事各量成断言 |
 
 内容有三层：**章节题本**（五档 × 5 局 = 25 局，构建期烘好并逐局复验）、**现抽一局**（五档任选，
 入门/简单/中等现场生成；难/烧脑两档在 `TIERS` 里就写着 `live:false`，界面从烘好的 5+5 局里轮着取，
@@ -89,12 +90,20 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
    `SAMPLES=24 npm run balance` 打出的中位数是
    **19.8 < 33.6 < 53.2 < 103.9 < 136.5**（严格递增），各档 `超预算 0/N`，
    `难` 档 `进差法：用到 4/4，不用就推不完 4/4`。
+7. **暂停同时冻住表和盘**：榜是按 `ms` 排名的（`js/store.js` 里 `a.ms < b.ms`），只停表不锁盘的
+   暂停等于把思考时间做成免费的——所以这一句是反洗钱，不是体贴。`pause` 场（`tools/scenarios.js:910`
+   起，44 条）先证明没按暂停时表按墙钟走、HUD 那行时间在刷新（对照组），再要求按下去之后
+   `Δ读数 = 0` 且 HUD 不再被重画；然后把**十路落子入口**逐个按一遍（点白格、按数字、点数字键盘、
+   `H`/`Z`/`C`/`N`/`⌫`、方向键），要求 `values`/`notes`/步数/提示数/选中格/模式六项读数一格没动。
+   反过来它也证明这不是"全场死"：继续后同一格同一个数字立刻落上、照常记步、提示恢复计费；
+   带着暂停态按「换一局」，新局必须在走表——这一条当场抓到过一个真缺陷（`load()` 没清引擎自己的
+   `paused`，新局顶着一块刚被清零又不走的表），现已修好并由 `afterNew.moved > 0` 钉住。
 
 ---
 
 ## 这个仓**不承诺**什么
 
-这一段是上面那六句的可信度来源——反面写清楚，正面才算数。
+这一段是上面那七句的可信度来源——反面写清楚，正面才算数。
 
 - **不承诺"每一条线索都是承重墙"，也不承诺"线索集已是最简"。** 实测（`npm test` H 节）：
   25 局共 **619 条线索，其中 618 条可以单独抹掉而盘面仍然唯一**，1 条在 200k 节点预算内
@@ -102,7 +111,7 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
   原因就是出题是 solution-first：结构决定了**每条 run 恰好带一条线索**
   （`js/engine/kakuro.js:226` 在建盘时就要求"和的个数 == run 的条数"），
   雕刻每局只能抹 **0~1 条**（`maxCarves` 改的是黑格图样，不是线索，见 `js/engine/generate.js:212`）。
-  实测口径写在 `js/engine/generate.js:437`（`redundantClues` 的注释）和 H 节的输出行里。
+  实测口径写在 `js/engine/generate.js:435-453`（`redundantClues` 的注释与它的声明）和 H 节的输出行里。
   **过约束不影响任何一条承诺**：承诺的是"唯一解在预算内证完 + 铅笔推得完 + 两套实现逐格相同"，
   从来不是"线索最少"。谁哪天要把"线索最小"写成承诺，就得让 H 节那个 618 掉到 0。
 - **不承诺"任何一块 Kakuro 盘面都能被这六条规则推完"**：这六条规则**不完备**（这是取舍不是缺陷）。
@@ -159,25 +168,26 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码，无构�
 
 ---
 
-## 跑测试：五条命令各自证明什么
+## 跑测试：七条命令各自证明什么
 
 ```bash
 npm run check        # 逐文件 node --check + 入口断言（index.html 里有 <canvas>、main.js 挂 window.kakuro）
-npm test             # 引擎断言 144 通过 / 0 失败，分节 A–H（每节都打实测数字，不是只打 ok）
+npm test             # 引擎断言 144 通过 / 0 失败，分节 A–H（每节都打实测数字，不是只打 ok）；链里再跑文档行号对账
+npm run doctest      # 文档行号对账单独一条：核 README / DESIGN 里印着的每一条 `文件:行号`（也进 npm test 的链）
 npm run bake         # 构建期烘 25 局进 js/data/levels.js（连答案 ink 与每一局的读数）
 npm run bake -- --check   # 复验：✓ 25 局复验一致；五档各「超预算 0 局」，穷举节点最多 18/76/285/4191/9625
 SAMPLES=24 npm run balance # 难度尺：对账 405 格 0 处不一致、五档中位数递增、各档超预算 0/N，不成立就 exit 1
-npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0 失败（HTTP 5316、CDP 9366）
+npm run verify       # 真实 headless Chrome：15 个场景 / 275 条断言 / 0 失败（HTTP 5316、CDP 9366）
 ```
 
 - `npm test` 的八节：A 组合数学（405 个合式 `(L,S)` 的 DP 表与穷举逐格相等）｜B 哨兵值｜
   C 铅笔规则可靠性（2,362 条结论逐条被独立穷举确认）｜D 进差法（40 条事件、14 种片区说法）｜
   E 两套实现逐格一致｜F 超预算 ≠ 唯一｜G 铅笔推得完｜H 冗余线索**实测**。
 - `npm run verify` 的场景：`first play hint conflict win resume-a resume-b resume-c resume-d
-  dirty-a dirty-b dirty-c touch geom`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
+  dirty-a dirty-b dirty-c touch geom pause`。断言读的是 **DOM 几何与画布像素**（黑格哪个象限点亮、
   墨色数字像素、触摸目标 ≥44px、5×5 与 10×10 的几何对拍），不读内部标志位。
   `verify.sh` 有 pre-flight：先 `curl` 首页、`grep 加算十字`，证明 5316 上服务的是本作。
-- 这套闸在**三种形态**下各自跑过，都是 14 场景 231 条 0 失败（2026-09-28 本机实测）：
+- 这套闸在**三种形态**下各自跑过，都是 15 场景 275 条 0 失败（2026-10-04 本机实测）：
   ① 根形态 `npm run verify`（`http://127.0.0.1:5316/`，`server.cjs` 把仓库当文档根）；
   ② Pages 的 `/<repo>/` 前缀形态——把仓库软链进一个父目录、用 `python3 -m http.server` 服务那个
   父目录，`BASE_URL=http://127.0.0.1:<port>/z-biz-game-kakuro-cos/`（CI 的 browser job 就是这么起的，
@@ -188,17 +198,127 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0
   不占位的 overlay 滚动条，runner 上滚动条要从同一列里拿走 15px，只有 ③ 才会暴露"宽度由高度
   决定"那一类布局。已部署站点另算一条口径（`BASE_URL=https://z-biz-game.github.io/z-biz-game-kakuro-cos/ npm run verify`），
   每次上线之后复跑，数字记在本节末。
+- **还有一个开关是给闸自己用的**：`USER_GESTURE=0 SCENARIOS=pause bash tools/verify.sh` 故意**不发**
+  那份瞬时用户激活（`requestFullscreen()` 的前置条件），第十五场于是走"全屏被拒"那一支——
+  本机实测 34 条 / 0 失败（`fs:'refused'`）。要这个开关的理由：正常跑法永远走不到那一支，
+  走不到的代码等于从没被测过；两支各跑一遍之后，"按钮状态就是本作对能不能全屏的说法"这句
+  才是量出来的，不是读代码读出来的（完整因果在 `DESIGN.md` §9）。
 - **可选诊断**：`REDUNDANT=1 npm run bake -- --check` 或 `REDUNDANT=1 npm run balance` 会逐局打
   "可省线索 X/Y 条"。它**只打数、不 fail**，理由写在 `tools/balance.mjs:232-236`：
   可省不是违规（"线索最小"从来不是承诺），真正会 fail 的只有 `unproven`——那是"这次测量没做完"，
   而不是"这条线索必要"；要下结论只能加 `REDUNDANT_NODES` 重跑。
-- CI（`.github/workflows/ci.yml`）跑 check / bake --check / balance(SAMPLES=24) / 引擎测试 / 入口文件，
+- CI（`.github/workflows/ci.yml`）跑 check / bake --check / balance(SAMPLES=24) / 引擎测试 / 文档行号对账 / 入口文件，
   **不 `npm install`**：零运行时依赖、零构建步骤，装依赖只会换来网络抖动。
-  浏览器门禁也进 CI：`browser` job 把 `npm run verify` 那 14 个场景跑两遍——root 形态（`server.cjs` 把仓库当文档根）
+  浏览器门禁也进 CI：`browser` job 把 `npm run verify` 那 15 个场景跑两遍——root 形态（`server.cjs` 把仓库当文档根）
   与 Pages 真实形态（仓库挂在 `/<repo>/` 一段下）。第二遍不是凑对称：根形态的服务器分不出
   "斜杠开头的 import"和"相对 import"，同组织的 ulam 就在 Pages 前缀下丢过一整段根本没跑的断言，
   本机却全绿。`node-version: 22` 是被 `tools/playtest.cjs` 钉的——它用 22+ 才有的全局
   `WebSocket`/`fetch`，在 20 上第一条 attach 就死。
+
+---
+
+## 文档行号对账（`npm run doctest`）
+
+上面那两份文档里印着几十条「去看第 N 行」。写那句话的时候没有任何机器核过它：改了代码不重编行号，
+文档不会响，读者按图索骥找到的是别的东西。`tools/docs-test.mjs` 把那句话变成会红的断言——
+解析 README / DESIGN 里每一条反引号包住的 `path:NN` / `path:NN-MM`，逐条开文件核四件事。
+
+本轮实跑（2026-10-07 本机，node 26.8.1；这几行的数字是这一跑打印的，不是手抄的）：
+
+```
+  · 解析 67 条 · 续引 0 条 · 无法定址 0 处 · 带指认 9 条 · 跨仓引用 0 处
+
+文档行号对账：2 份文档 · 67 条引用 · 9 条带指认 · 28 条判据
+
+28 通过 / 0 失败
+```
+
+- **口径**（与家族里其余几份同一份，不是本仓自创）：只有反引号里的 `path:NN` 算引用；六种贴法都产出
+  锚点（`` `name`（`path:NN`）``、`` `path:NN`（`name`）``、`` `path:NN` 的 `name` ``、带函数参数、带 `::`、
+  `` `name` 在 `path:NN` ``）；`::` 的切分排在 `/` 的拒绝之前，否则带目录限定的符号名会被当成路径而丢掉锚点；
+  body 带空格是命令行（`npm test`），拿它第一个词去锚是一次凭空的假红；纯标点间隔不构成指认。
+- **锚点认整词不认子串**：`solve` 坐在 `const solvedCount = 0;` 那一行上也算"出现"，子串口径会把一次
+  真的漂读成绿。整词口径有一个哨（D7b）：它自己现量挑一条"前缀是子串命中、整词不命中"的真声明，
+  谁把口径退回 `.includes` 它就红。
+- **两半判据各防一种谎**：范围半 = 文件在盘上、行号落在真实行数内、**被指的那几行不许整段是空白**
+  （"在界内"不等于"指到了代码"，落点判据的靶子由本轮从源码里现量一个真空行，不写死行号）；
+  锚点半 = 贴着引用那个名字必须作为完整标识符出现在被指的那几行里。
+- **续引向同句借出处**：完整引用后面只写 `:NN` 时，向同一句里最近的那条完整引用借路径；句号、分号、
+  空行、新标题都截断这次借。借不到的计入「无法定址」，由等式闸逐处钉住，不静默跳过。
+- **文档抄的数字按等式收**：`解析 N 条`、`无法定址 N 处`、`N 条带指认`、`续引 N 条`、`跨仓引用 N 处`
+  这五处（含本节）都必须等于这一跑自己数出来的值；只写下限抓不住"文档抄的是上一轮那个数"。
+  末了还有一条**条数台账**：文档印的「文档行号对账 28 条」等于本轮实发的判据条数——删掉一条断言就撞在这里。
+- **接线**：同一条命令住在 `npm run doctest`、`npm test` 的链、`tools/verify.sh` 的收尾段与
+  `.github/workflows/ci.yml` 的 check job 里；只在 CI 跑的门不算门，这三处各由一条判据当场核一遍。
+
+### 这一腿第一轮咬到了什么
+
+不是"接上一跑就全绿"：第一轮 13 红，其中两条是真账。
+
+- **20 条引用只写裸文件名**（DESIGN 里 count.js:18、generate.js:437-444 这种，反引号包住但没有目录）。
+  路径按仓根解析，裸 basename 一律「文件不存在」；本仓每个 basename 在树里都只有一处，所以补齐成
+  `js/engine/count.js:18` 这种完整路径是机械的（修复脚本对每条 needle 断言命中数、并断言改完行数不变）。
+- **1 条锚点漂**：README 说「实测口径写在 generate.js 的第 437 行（`redundantClues` 的注释）」，
+  而 437 那一行是注释里的一句结论，整段注释 435-452 里根本没有 `redundantClues` 这个名字（它在 453 的声明上）。
+  改成 435-453 把注释块连声明一起圈进来，锚点才真的落回原处。
+- **夹具自己也被咬了一次**：D8"这条腿真有牙齿"第一轮是红的，但红得没道理——它挑的靶子是
+  `tools/scenarios.js:910`，而这个 span 在文档里出现 2 次，被挪歪的那一次恰好是不带指认的那一次，
+  于是"锚点增 0"。改成**逐条候选当场试打一遍增量**（挑真正会让锚点变红的那一处）之后才绿。
+  这条腿的牙齿由这条判据证明，而这条判据的牙齿由下一节的台架证明。
+
+### 这一腿没覆盖什么
+
+诚实条目，读之前别把它当"文档全对"的证明：
+
+- 它只核行号落点，不核周围的句子。「这 12 行做的是 X」这种说法错了它不响。
+- 文档里没用反引号写出的行号不进解析。README「规则」那一节的「第 1 行和第 1 列」说的是**棋盘**不是代码，
+  本来就不该被解析；但反过来说，谁把代码行号写成散文（不带反引号），这一腿就看不见它。
+- **续引本轮 0 条**：两份文档里没有一条 `:NN` 简写，所以"同句借出处"这条口径只由 D6 的七把合成夹具证明，
+  没被本仓的真引用走过一遍。等有人开始写简写，这个数字会变（而等式闸会跟着要它改）。
+- 67 条引用全部指向 `js/**` 与 `tools/**`，另有 `index.html` / `css/game.css` 各一条；
+  `package.json`、`tools/verify.sh`、`.github/workflows/ci.yml` 没有任何行号引用 ⇒ 改这几个文件的行位置不会响。
+- 往上插一行会连累一批：`js/engine/kakuro.js` 被 22 条引用指着、`js/engine/generate.js` 被 17 条指着，
+  给它们上面插一行就是一批一起红。这是设计（红说明文档确实需要跟着改），但代价是改代码要顺手改文档。
+- 下刀台架跑在仓库外的副本（`_scratch/kakuro-docs-teeth/`）上，仓里的树一律只读；
+  它不在 `npm test` 的链里——那台架要复制整棵树，不该让日常总闸付这个钱。
+
+### 这一腿自己被核过吗
+
+绿色本身不是证据：一条永不红的判据和一条正确的判据打印出来一样。所以每一把刀都必须**只**红它该红的
+那一格。台架在仓库外的副本上逐条下刀（15 把），每把刀之后重建副本并要求回绿，末尾逐文件比 md5 证明
+仓里的树没被碰过。本轮实跑：
+
+```
+rows: 32 ok: 32 fail: 0
+ALL TEETH BITE
+```
+
+| 刀 | 该红的格子 |
+| --- | --- |
+| K1 锚点漂：README 那条 `js/engine/generate.js:435-453` 的窗口整体上移一格，453 的声明出窗 | D3（1 条） |
+| K2 文件不在：count.js 改成 counnt.js | D2 |
+| K3 空行落点：rng.js 的引用挪到**现量**的第一个内部空行（在界内但不指代码） | D2 |
+| K4 借不到出处：H1 之前塞一条前面没有完整引用的裸行号 | 「无法定址」那条等式 |
+| K4b 文档把条数抄旧：README 印的解析条数改成 60 | 「解析 N 条」那条等式 |
+| K5 指认消失：把 `redundantClues` 的注解换成中文词 | 「N 条带指认」那条等式 |
+| K6 口径退回子串：`anchorHit` 改成 `.includes` | D7 与 D7b 两把哨 |
+| K7 输入集缩水：把 DESIGN.md 从仓里摘出去 | D1、D2a、D3a 加两条等式（共 5 条；D2b 不响是预期） |
+| K8 删一条断言：去掉 D3a 那一格 | D10 条数台账 |
+| K9 只在 CI 跑的门不算门：删 ci.yml 那一步 | D9c |
+| K10 本地整闸没跑：删 tools/verify.sh 那一行 | D9b |
+| K11 doctest 指向别处：改 package.json 的那条命令 | D9a |
+| K12 README 的命令条数说谎：标题「七条」改成六条（块内行数不动） | D9d |
+| K13 掉出 npm test 的链 | D9d |
+| K14 把 README 换成一句没有引用的话（D1 照旧绿：文件还在盘上） | D2b |
+
+台架自己也被咬了三次，都是台架的错而不是闸的错，写下来免得下一个人再踩：
+
+- K4 一开始我预期它红两条等式（解析 + 无法定址），实测只红一条。想清楚是对的：借不到出处的裸行号
+  **根本没进**解析条数，所以「解析」不会动。要抓"文档把条数抄旧"得另下一把刀（K4b）。
+- K7 的 D2b 不响也是对的：D2b 管"文件被读进来了但里面一条引用都没有"，摘掉一整份文件归 D1。
+  两条判据抓的是两种坏法，别把一条当另一条的替身。
+- 删断言那把刀（K8）本来硬要求"必须只掉 1 行"，而 D3a 那条判据占两行 ⇒ 台架自己判失败。
+  改成"掉几行由 needle 自己决定"。判据的行数不是常数这件事，本身就是这类夹具的常态。
 
 ---
 
@@ -214,17 +334,22 @@ npm run verify       # 真实 headless Chrome：14 个场景 / 231 条断言 / 0
   铅笔走"每格 2 字节小端 + RLE"；读进来每个字段都过 `sanitize*`，脏数据吞得下、
   `localStorage` 整个儿抛异常（隐私模式）也照样能玩；`reset` 内存与磁盘两边都清。
 - 规模：13 个运行时 ES Module + 6 个验证脚本，**运行时依赖 0 个**；
-  引擎测试 144 条断言、浏览器断言 231 条，均为实测（出处见上）。
+  引擎测试 144 条断言、浏览器断言 275 条，均为实测（出处见上）。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-kakuro-cos/>
   —— 由 `.github/workflows/pages.yml` 在 `main` 推送时把 `index.html + css + js` 原样发布。
-  线上产物按这一条核对：把 CDN 上那 15 个 `index.html + css/* + js/*` 逐字节比回 HEAD，
-  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `7a26fb0`（2026-09-28）这一次的结果记在下面
+  线上产物按这一条核对：把 CDN 上那些 `index.html + css/* + js/*` 逐字节比回 HEAD（个数由
+  `git ls-tree -r <SHA> --name-only` 现数，`3db4864` 上是 16 个），
+  再看 `BASE_URL=<线上> npm run verify` 的 exit code。锚在 `3db4864`（2026-10-04）这一次的结果记在下面
   （它比"最新"更结实：每次上线都换一个新的观测值，只有锚定的那次能说它当时是多少）——
-  `pages.yml` 那条部署 job 自己报 success；15 个相同、0 个不一致；对着 CDN 实跑是
-  **14 场景 231 条 / 0 失败**、exit 0，`win` 那条交回 `againBox [98, 44]` 对 `laidOut '44px'`、
-  `settleTicks 10`、`flightAnims ['rise:running:33']`——量之前入场动画还在飞，落定之后再读就是
-  这只盒自己的布局高度。同一 SHA 在 runner 上两形各一遍也是 14/231/0，引擎那条打
-  `144 通过 / 0 失败`。
+  `pages.yml` 那条部署 job 自己报 success；16 个相同、0 个不一致、0 个取不到；对着 CDN 实跑是
+  **15 场景 275 条 / 0 失败**、exit 0，`pause` 那条交回 `fs 'entered'` 与 `frozen 0`/`frozenP 0`/
+  `jump 31`（全屏腿在线上排得进去，不是只在 localhost 才绿；两处冻表读数都是恰好 0，恢复的第一帧
+  只前进 31 ms）；`win` 那条交回 `againBox [98, 44]` 对 `laidOut '44px'`、`settleTicks 9`、
+  `flightAnims ['rise:running:33']`——量之前入场动画还在飞，落定之后再读就是这只盒自己的布局高度。
+  CI 在同一个 SHA 上两条 job 都报 success（run #18：`real browser gate (both URL shapes)` 与
+  `syntax + engine guarantees`）——job 自己打印的条数存在 Actions 日志里，本机这把 PAT 没有
+  `actions:read`（读日志 403），所以这里不抄 runner 的数，只记它红绿。引擎那 144 条在 HEAD 上
+  `npm run test` 打的是 `144 通过 / 0 失败`。
 
 ---
 
@@ -242,11 +367,60 @@ js/ui/game.js          状态机：落子、铅笔、撤销、提示计费、判
 js/render/board.js     几何 + 绘制 + 命中（黑格两象限的读法在这里）
 js/store.js            localStorage 单键存档：RLE 墨水 + 铅笔 + 清洗
 js/library.js          章节 / 日课 / 纪录的账本
-tools/                 engine-test / balance / bake / playtest(CDP) / scenarios / verify.sh
+tools/                 engine-test / balance / bake / playtest(CDP) / scenarios / verify.sh / assemble-site.sh / deploy-set.mjs / deploy-set-selftest.mjs
 server.cjs             零依赖静态服务（5316）
 electron/              桌面壳（同一份代码，无构建）
+tools/assemble-site.sh  部署产物的唯一清单（pages.yml 与本地闸调同一支）
+tools/deploy-set.mjs  部署集闸：检查即将上传的那份产物
+tools/deploy-set-selftest.mjs  部署集闸的阴性自证（每一类断言当场打红一次）
 ```
 
 ## 许可
 
 MIT。见 `LICENSE`。
+
+## 上线的到底是哪一批文件
+
+这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
+`cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
+`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
+
+现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
+然后**对拷出来的产物**提要求（`tools/deploy-set.mjs`）：
+
+- **W 清单与页面同源**：`pages.yml` 里必须真有 `run: bash tools/assemble-site.sh <dir>` 这一行，
+  `ci.yml` 里必须真有 `run: node tools/deploy-set.mjs`。认的是调用那一行，不是文件里出现过这个
+  路径——注释里本来就会写它，只 grep 字符串会被一句散文喂绿。
+- **R 引用可达**：引用不靠手打名单。从 `index.html` 的 `href/src` 出发，凡解析出来是 `.js`/`.css`
+  的就把那一站也扫一遍（CSS 的 `url()`、JS 去掉注释后的 `'./…'` 字面量、`new URL(x, base)` 的两种
+  基、`navigator.serviceWorker.register`、`scope`），`manifest` 的 icons/screenshots/shortcuts 各自
+  的 `src` 也算引用。取径上读不到的那一站本身就是红（读不到＝这一站根本没扫）。每条引用都必须在
+  产物里且非 0 字节；绝对路径单列一条红，因为 Pages 挂在 `/<repo>/` 前缀下会跳出去。
+- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高——文件图标读文件头，
+  内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
+  （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
+  声明写 512 而真图 192 就一路放行。
+- **钉住两个数**：R 段实际检查的路径条数（`37`）与这一次跑的断言条数（`55`），两个数
+  都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
+  少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
+  不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
+  自己的条数，还有的会把文档里点到的每个组编号逐个核对"这一轮真的发过"——两道闸共用一个名字，
+  或者在本仓的文档里出现一个本仓没有的组编号，打红的都是不相干的那一边。
+
+`tools/deploy-set-selftest.mjs` 是这两颗钉的阳性证明：它把仓库复制到临时目录，照着每一类断言
+各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
+X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
+X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
+`37`、断言仍然 `55`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
+图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
+要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
+的出处表现挑（取径真的会读的那支 JS / 那一张 CSS，不写死某一个仓的入口名），所以页面改了、仓与仓
+不同，台架跟着走。
+
+`node tools/deploy-set.mjs` 与 `node tools/deploy-set-selftest.mjs` 就是 CI 跑的那两条命令本身
+（package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；本仓的整闸在 `tools/verify.sh` 的 `=== deploy-set ===` 那一段也各跑一次。它们红的时候并进本仓那条出口的退出码——这一条是这么证的：
+把 ci.yml 里那行 `run: node tools/deploy-set.mjs` 砍掉，本仓整闸必须点名红且退出码非 0。
+所以「本地全绿、线上 404 自己的 manifest / sw.js / 图标」这一类坏法在本地就会红。
+

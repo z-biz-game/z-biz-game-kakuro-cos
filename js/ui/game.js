@@ -46,6 +46,8 @@ export class Game {
     this.status = 'empty'; // empty | playing | paused | won | stuck
     this.startedAt = 0;
     this.elapsedMs = 0;
+    this.paused = false;
+    this.pausedTotal = 0;
     this.message = null;
     this.flash = null; // {cells, run, until}
     this.hintMark = null; // {cell, run, rule, digit, until}
@@ -68,6 +70,10 @@ export class Game {
     this.status = 'playing';
     this.startedAt = Date.now();
     this.elapsedMs = 0;
+    // 新盘不带着上一局的暂停态：paused 留着为真，tick() 就会一直返回刚被清零的 elapsedMs，
+    // 新局顶着一块不走的表（换一局那一步踩过）。
+    this.paused = false;
+    this.pausedTotal = 0;
     this.message = null;
     this.flash = null;
     this.hintMark = null;
@@ -98,35 +104,27 @@ export class Game {
   // ---- 读数 ----------------------------------------------------------------------------------
 
   tick() {
-    if (this.status === 'playing') this.elapsedMs = Date.now() - this.startedAt;
+    if (this.status === 'playing' && !this.paused) this.elapsedMs = Date.now() - this.startedAt;
     return this.elapsedMs;
   }
 
-  /** 暂停：先把进行中的那段用时结算进 elapsedMs，再改状态。
-   *  tick() 只在 status==='playing' 时读墙钟，所以暂停期间仿真一步都不推进。 */
-  pause() {
-    if (this.status !== 'playing') return { ok: false, why: '只有进行中的局能暂停', status: this.status };
-    this.tick();
-    this.status = 'paused';
-    this.emit('pause', { ms: this.elapsedMs });
-    return { ok: true, ms: this.elapsedMs };
-  }
-
-  /** 恢复：把 startedAt 挪到"墙钟减去已累计用时"，暂停那一段整个跳过。 */
-  resume() {
-    if (this.status !== 'paused') return { ok: false, why: '这一局没在暂停', status: this.status };
-    this.startedAt = Date.now() - this.elapsedMs;
-    this.status = 'playing';
-    this.emit('resume', { ms: this.elapsedMs });
-    return { ok: true, ms: this.elapsedMs };
-  }
-
-  togglePause() {
-    return this.status === 'paused' ? this.resume() : this.pause();
-  }
-
-  get paused() {
-    return this.status === 'paused';
+  // ---- 暂停 -----------------------------------------------------------------------------------
+  // 冻结的是**读数本身**，不是外面某个标志位：暂停时把此刻的用时记进 pausedTotal，
+  // tick() 在暂停期间一律返回它 —— 谁来读都是同一个冻结值，标志位本身不可能被绕开。
+  // 恢复时把 startedAt 重新对齐到 pausedTotal，于是 Date.now() - startedAt 从冻结值续走，
+  // 恢复后第一帧的 dt 就是一个正常帧间隔，不会把暂停那几秒一次性吃掉（不跳步）。
+  setPaused(next) {
+    next = !!next;
+    if (this.paused === next) return this.paused;
+    if (next) {
+      this.tick();                      // 先结算到此刻，再停表
+      this.pausedTotal = this.elapsedMs;
+      this.paused = true;
+    } else {
+      this.startedAt = Date.now() - this.pausedTotal;
+      this.paused = false;
+    }
+    return this.paused;
   }
 
   get filled() {
