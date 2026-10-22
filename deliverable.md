@@ -27,6 +27,7 @@ el.canvas.addEventListener('pointerdown', pick);                    // pick 从�
 ```
 
 并线前两侧的 `bindCanvas` **完全一致**：`const pick = (ev) => {...}` 闭包 + 三处 `addEventListener`
+（本次按那一份恢复，定义处见 `js/main.js:589` 的 `bindCanvas`）
 （有 Pointer Events 就只走 pointerdown，否则 touchstart + mousedown 回落）。
 并线把闭包拆成了「一半内联、一半引用」。
 

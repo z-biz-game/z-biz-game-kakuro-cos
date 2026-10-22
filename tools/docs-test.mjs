@@ -214,8 +214,12 @@ function ok(a, b, detail = '') {
 const note = (msg) => notes.push(msg);
 
 const docFiles = fs.readdirSync(ROOT).filter((f) => f.endsWith('.md'));
+// 这一份名单是**警报器**，不是输入来源（输入来源就是上面那行 readdirSync）：根下多一份或少一份
+// .md 都必须让这条腿红一次，逼着人去看那份新文档是什么、里面有没有指得回实处的引用。
+// 2026-10-22 就是它抓到的：并线那一批把 deliverable.md 放进了仓根，而它一条引用都没有——
+// D1 报"输入集变了"，D2b 报"这一份等于没被读过"，两条一起红，npm test 当场 rc=1。
 ok('D1 输入集：本仓根下的 .md 都被这条腿读进来了（读的是整个目录，不是一份手抄名单）',
-  docFiles.length === 2 && ['README.md', 'DESIGN.md'].every((f) => docFiles.includes(f)),
+  docFiles.length === 3 && ['README.md', 'DESIGN.md', 'deliverable.md'].every((f) => docFiles.includes(f)),
   docFiles.join(','));
 
 let docText = '';
